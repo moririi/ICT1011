@@ -50,11 +50,13 @@ docs/                Interface definitions and attributions
 3. Clone this repo and open `firmware/tinyboy/tinyboy.ino` in the Arduino IDE.
 4. Select the TinyScreen+ board and its port, then upload.
 
+
 ## Benchmarks
 
 | Test | Result | Notes |
 | --- | --- | --- |
 | `experiments/fps_test` | **194 FPS** | Full 96×64 screen redraw, 8-bit colour, line-by-line `writeBuffer` (~5 ms per frame) |
+| `experiments/raycaster_v1` | **~50 FPS** | Walls-only raycaster, `float` maths, 96 rays per frame |
 
 ## Contributing
 
