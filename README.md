@@ -48,7 +48,7 @@ docs/                Interface definitions and attributions
 1. Install the [Arduino IDE](https://www.arduino.cc/en/software).
 2. Set up the TinyScreen+ board support by following the TinyCircuits setup guide on [tinycircuits.com](https://tinycircuits.com/).
 3. Clone this repo and open `firmware/tinyboy/tinyboy.ino` in the Arduino IDE.
-4. Select the TinyScreen+ board and its port, then upload.
+4. Select the TinyScreen+ board and its port, then upload.y
 
 ## Benchmarks
 
