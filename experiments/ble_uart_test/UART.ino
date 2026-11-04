@@ -1,3 +1,11 @@
+// UART.ino - Watch A (PERIPHERAL) BLE setup for TinyBoy watch-to-watch test
+// Based on the TinyCircuits ST BLE TinyShield UART example (Ben Rose, TinyCircuits)
+// Changes for watch-to-watch:
+//   1. unique Bluetooth address (last byte 0x0A)
+//   2. prints its characteristic handles at start-up (Watch B needs these numbers)
+//   3. advertises with its PUBLIC address (was STATIC_RANDOM_ADDR) so Watch B can find it
+//   4. advertised name "TinyboyA" (was BlueNRG)
+
 #if BLE_DEBUG
 #include <stdio.h>
 char sprintbuff[100];
@@ -17,6 +25,9 @@ uint16_t connection_handle = 0;
 
 int connected = FALSE;
 
+// Declared up here (not further down) so BLEsetup() can print them
+uint16_t UARTServHandle, UARTTXCharHandle, UARTRXCharHandle;
+
 
 int BLEsetup() {
   int ret;
@@ -27,7 +38,8 @@ int BLEsetup() {
   /* Reset BlueNRG/BlueNRG-MS SPI interface */
   BlueNRG_RST();
 
-  uint8_t bdaddr[] = {0x12, 0x34, 0x00, 0xE1, 0x80, 0x02};
+  // CHANGE 1: unique address for Watch A (Watch B connects to exactly this address)
+  uint8_t bdaddr[] = {0x12, 0x34, 0x00, 0xE1, 0x80, 0x0A};
 
   ret = aci_hal_write_config_data(CONFIG_DATA_PUBADDR_OFFSET, CONFIG_DATA_PUBADDR_LEN, bdaddr);
 
@@ -42,7 +54,8 @@ int BLEsetup() {
   }
 
   uint16_t service_handle, dev_name_char_handle, appearance_char_handle;
-  ret = aci_gap_init_IDB05A1(GAP_PERIPHERAL_ROLE_IDB05A1, 0, 0x07, &service_handle, &dev_name_char_handle, &appearance_char_handle);
+  // 0x08 = max device name length; "TinyboyA" is 8 characters (the original 0x07 was too short)
+  ret = aci_gap_init_IDB05A1(GAP_PERIPHERAL_ROLE_IDB05A1, 0, 0x08, &service_handle, &dev_name_char_handle, &appearance_char_handle);
 
   if (ret) {
     PRINTF("GAP_Init failed.\n");
@@ -62,6 +75,8 @@ int BLEsetup() {
 
   if (ret == BLE_STATUS_SUCCESS) {
     PRINTF("UART service added successfully.\n");
+    // CHANGE 2: Watch B needs these two numbers (put them in ble_central_test.ino)
+    PRINTF("TX char handle: %d   RX char handle: %d\n", UARTTXCharHandle, UARTRXCharHandle);
   } else {
     PRINTF("Error while adding UART service.\n");
   }
@@ -93,9 +108,6 @@ void aci_loop() {
 #define COPY_UART_SERVICE_UUID(uuid_struct)  COPY_UUID_128(uuid_struct,0x6E, 0x40, 0x00, 0x01, 0xB5, 0xA3, 0xF3, 0x93, 0xE0, 0xA9, 0xE5, 0x0E, 0x24, 0xDC, 0xCA, 0x9E)
 #define COPY_UART_TX_CHAR_UUID(uuid_struct)  COPY_UUID_128(uuid_struct,0x6E, 0x40, 0x00, 0x02, 0xB5, 0xA3, 0xF3, 0x93, 0xE0, 0xA9, 0xE5, 0x0E, 0x24, 0xDC, 0xCA, 0x9E)
 #define COPY_UART_RX_CHAR_UUID(uuid_struct)  COPY_UUID_128(uuid_struct,0x6E, 0x40, 0x00, 0x03, 0xB5, 0xA3, 0xF3, 0x93, 0xE0, 0xA9, 0xE5, 0x0E, 0x24, 0xDC, 0xCA, 0x9E)
-
-uint16_t UARTServHandle, UARTTXCharHandle, UARTRXCharHandle;
-
 
 uint8_t Add_UART_Service(void)
 {
@@ -166,14 +178,17 @@ void setConnectable(void)
 {
   tBleStatus ret;
 
-  const char local_name[] = {AD_TYPE_COMPLETE_LOCAL_NAME, 'B', 'l', 'u', 'e', 'N', 'R', 'G'};
+  // CHANGE 4: advertised name matches the device name
+  const char local_name[] = {AD_TYPE_COMPLETE_LOCAL_NAME, 'T', 'i', 'n', 'y', 'b', 'o', 'y', 'A'};
 
   hci_le_set_scan_resp_data(0, NULL);
   PRINTF("General Discoverable Mode.\n");
 
+  // CHANGE 3: advertise with the PUBLIC address set above (was STATIC_RANDOM_ADDR),
+  // so Watch B can connect to the known address 12:34:00:E1:80:0A
   ret = aci_gap_set_discoverable(ADV_IND,
                                  (ADV_INTERVAL_MIN_MS * 1000) / 625, (ADV_INTERVAL_MAX_MS * 1000) / 625,
-                                 STATIC_RANDOM_ADDR, NO_WHITE_LIST_USE,
+                                 PUBLIC_ADDR, NO_WHITE_LIST_USE,
                                  sizeof(local_name), local_name, 0, NULL, 0, 0);
 
   if (ret != BLE_STATUS_SUCCESS)
