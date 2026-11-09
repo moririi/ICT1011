@@ -20,6 +20,7 @@ from telegram.ext import (
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_THREAD_ID = os.getenv("TELEGRAM_THREAD_ID")  # topic inside the group (optional)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -286,6 +287,7 @@ async def poll_new_matches(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     chat_id=chat_id,
+                    message_thread_id=int(TELEGRAM_THREAD_ID) if TELEGRAM_THREAD_ID else None,
                     text=f"📢 *AUTO MATCH REPORT*\n\n{report}",
                     parse_mode=ParseMode.MARKDOWN,
                 )
