@@ -6,7 +6,6 @@
 //    1. connect directly to Watch A's Bluetooth address (no scanning)
 //    2. send text typed in this Serial Monitor -> appears in Watch A's Serial Monitor
 //    3. turn on notifications -> text typed in Watch A's Serial Monitor appears here
-//
 //  BLE setup adapted from the TinyCircuits ST BLE TinyShield UART example (Ben Rose,
 //  TinyCircuits) and ST's BlueNRG-MS client sample app. -> credit in docs/ATTRIBUTION.md
 //-------------------------------------------------------------------------------
@@ -22,7 +21,8 @@
 
 #include <stdio.h>
 char sprintbuff[100];
-#define PRINTF(...) {sprintf(sprintbuff,__VA_ARGS__);SerialMonitorInterface.print(sprintbuff);}
+// do { } while (0) so PRINTF works safely inside if/else
+#define PRINTF(...) do { sprintf(sprintbuff, __VA_ARGS__); SerialMonitorInterface.print(sprintbuff); } while (0)
 
 // ======================= FILL THESE IN =======================
 // Watch A's address: must match bdaddr[] in Watch A's UART.ino exactly
