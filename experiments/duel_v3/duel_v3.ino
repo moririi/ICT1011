@@ -558,12 +558,20 @@ void readJoysticks(bool &fwd, bool &back, bool &strafeL, bool &strafeR, bool &tu
 char meLetter()  { return role == ROLE_A ? 'A' : 'B'; }
 char oppLetter() { return role == ROLE_A ? 'B' : 'A'; }
 
-bool evtReady() { return (bool)SerialUSB; }  // only send when the laptop has the port open
+// USB serial already skips sending when no laptop has the port open, so no extra check is needed
+bool evtReady() { return true; }
 
-void evtStart(const char *type) { SerialUSB.print("EVT,"); SerialUSB.print(type); }
-void evtNum(long v)             { SerialUSB.print(','); SerialUSB.print(v); }
-void evtChar(char c)            { SerialUSB.print(','); SerialUSB.print(c); }
-void evtEnd()                   { SerialUSB.print('\n'); }
+// Each event is built in a buffer and sent in ONE write, so lines don't get chopped up
+// or glued together on the way to the laptop.
+char evtBuf[64];
+int  evtLen = 0;
+void evtAppend(const char *str) {
+  while (*str && evtLen < (int)sizeof(evtBuf) - 2) evtBuf[evtLen++] = *str++;
+}
+void evtStart(const char *type) { evtLen = 0; evtAppend("EVT,"); evtAppend(type); }
+void evtNum(long v)             { char t[16]; snprintf(t, sizeof(t), ",%ld", v); evtAppend(t); }
+void evtChar(char c)            { char t[3] = {',', c, 0}; evtAppend(t); }
+void evtEnd()                   { evtBuf[evtLen++] = '\n'; SerialUSB.write((const uint8_t *)evtBuf, evtLen); }
 
 void evtHello() {
   if (!evtReady()) return;

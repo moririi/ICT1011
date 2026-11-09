@@ -125,8 +125,8 @@ class MatchTracker:
             print(f"\n=== Match {self.match['id']} started: {self.name('A')} vs {self.name('B')} ===")
 
         elif kind == "ROUND_START":
-            if self.match:
-                print(f"  Round {f[1]} ...")
+            if self.match:  # the watch counts rounds across matches - number them per match here
+                print(f"  Round {len(self.match['rounds']) + 1} ...")
 
         elif kind == "POS":
             if not self.match:
@@ -143,7 +143,7 @@ class MatchTracker:
         elif kind == "ROUND_END":
             if not self.match:
                 return
-            rnd, winner = int(f[1]), f[2]
+            rnd, winner = len(self.match["rounds"]) + 1, f[2]
             hits = {"A": int(f[3]), "B": int(f[4])}
             shots = {"A": int(f[5]), "B": int(f[6])}
             self.match["rounds"].append({
