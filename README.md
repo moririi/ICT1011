@@ -58,6 +58,8 @@ docs/                Interface definitions and attributions
 | `experiments/fps_test` | **194 FPS** | Full 96×64 screen redraw, 8-bit colour, line-by-line `writeBuffer` (~5 ms per frame) |
 | `experiments/raycaster_v1` | **~50 FPS** | Walls-only raycaster, `float` maths, 96 rays per frame |
 | `experiments/raycaster_v2` | **~29–43 FPS** | Adds opponent sprite (hidden behind walls) + crosshair hit check; dips when the sprite fills more of the screen |
+| `experiments/duel_v1` | **~35 FPS** | 2-player duel over BLE (watch ⇄ watch), 10 packets/s with turn-taking, auto-restart watchdog |
+
 
 
 ## Contributing
