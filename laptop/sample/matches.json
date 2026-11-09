@@ -1,0 +1,111 @@
+{
+  "players": {
+    "A": {
+      "name": "Player A",
+      "matches": 1,
+      "wins": 1,
+      "losses": 0,
+      "rounds_won": 3,
+      "shots": 33,
+      "hits": 7
+    },
+    "B": {
+      "name": "Player B",
+      "matches": 1,
+      "wins": 0,
+      "losses": 1,
+      "rounds_won": 1,
+      "shots": 33,
+      "hits": 5
+    }
+  },
+  "matches": [
+    {
+      "id": 1,
+      "started": "2026-11-09T18:37:32",
+      "ended": "2026-11-09T18:37:32",
+      "status": "finished",
+      "winner": "A",
+      "players": {
+        "A": "Player A",
+        "B": "Player B"
+      },
+      "score": {
+        "A": 3,
+        "B": 1
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "winner": "A",
+          "hits": {
+            "A": 2,
+            "B": 1
+          },
+          "shots": {
+            "A": 9,
+            "B": 7
+          },
+          "duration_s": 24.2
+        },
+        {
+          "round": 2,
+          "winner": "B",
+          "hits": {
+            "A": 1,
+            "B": 2
+          },
+          "shots": {
+            "A": 6,
+            "B": 11
+          },
+          "duration_s": 21.2
+        },
+        {
+          "round": 3,
+          "winner": "A",
+          "hits": {
+            "A": 2,
+            "B": 1
+          },
+          "shots": {
+            "A": 10,
+            "B": 6
+          },
+          "duration_s": 18.8
+        },
+        {
+          "round": 4,
+          "winner": "A",
+          "hits": {
+            "A": 2,
+            "B": 1
+          },
+          "shots": {
+            "A": 8,
+            "B": 9
+          },
+          "duration_s": 27.8
+        }
+      ],
+      "positions_file": "positions/match_1.json"
+    },
+    {
+      "id": 2,
+      "started": "2026-11-09T18:37:32",
+      "ended": "2026-11-09T18:37:32",
+      "status": "aborted",
+      "winner": null,
+      "players": {
+        "A": "Player A",
+        "B": "Player B"
+      },
+      "score": {
+        "A": 0,
+        "B": 0
+      },
+      "rounds": [],
+      "positions_file": "positions/match_2.json"
+    }
+  ]
+}
