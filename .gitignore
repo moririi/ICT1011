@@ -9,3 +9,5 @@ laptop/matches.json
 laptop/positions/
 laptop/events_*.log
 *.tmp
+laptop/.env
+laptop/my_test/
