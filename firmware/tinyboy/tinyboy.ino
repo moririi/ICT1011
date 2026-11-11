@@ -16,6 +16,7 @@
 #include <SPI.h>
 #include <TinyScreen.h>
 #include <math.h>
+#include "sound.h"
 
 TinyScreen display = TinyScreen(TinyScreenPlus);
 
@@ -226,12 +227,6 @@ bool hasLineOfSight(float x0, float y0, float x1, float y1) {
   }
   return true;
 }
-
-// ---------------- Sound (stubs for the buzzer teammate) ----------------
-void playShotSound() {}
-void playHitSound() {}
-void playHurtSound() {}
-void playRoundOverSound(bool won) {}
 
 // ---------------- Rounds ----------------
 void drawRoundOverScreen(bool playerWon);
@@ -665,9 +660,11 @@ void updateMenu(unsigned long now) {
   int old = sel;
   if ((p & TSButtonUpperLeft) && sel > 0)               sel--;
   if ((p & TSButtonLowerLeft) && sel < itemCount() - 1) sel++;
-  if (sel != old) drawScreen();
+  if (sel != old) { drawScreen(); playMenuMoveSound(); }
 
   if (!(p & (TSButtonUpperRight | TSButtonLowerRight))) return;  // no select
+
+  playMenuSelectSound();
 
   switch (screen) {
     case SCR_MAIN:
@@ -702,6 +699,7 @@ void updateMenu(unsigned long now) {
 
 void setup() {
   display.begin();
+  soundBegin();
   display.setFlip(true);
   display.setBrightness(10);
   SerialUSB.begin(9600);
@@ -713,6 +711,7 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
+  soundUpdate();
   float dt = (now - lastFrame) / 1000.0f;
   lastFrame = now;
   if (dt > 0.1f) dt = 0.1f;
