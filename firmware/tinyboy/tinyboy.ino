@@ -2,7 +2,7 @@
  * raycaster_v4 - TinyBoy engine: 1v1 rounds against a bot
  * Builds on raycaster_v3 and adds:
  *   - round system: whoever lands 2 hits wins the round, then both players reset to their spawns
- *   - match: first to ROUNDS_TO_WIN rounds wins, then scores reset
+ *   - match: first to roundsToWin rounds wins, then scores reset
  *   - a bot that patrols the maze, turns to face you when it can see you, and shoots back
  *   - red screen border when you get hit, your own health pips (top-right)
  *   - the bot flashes yellow when it fires, so you know you're being shot at
@@ -48,7 +48,7 @@ const uint8_t COL_PLAYER_PIP_EMPTY = TS_8b_DarkGreen;
 // ---------------- Game rules ----------------
 const int PLAYER_MAX_HITS = 2;   // hits you can take before losing the round
 const int BOT_MAX_HITS    = 2;   // hits the bot can take
-const int ROUNDS_TO_WIN   = 3;   // first to 3 rounds wins the match
+int roundsToWin = 3;   // first to N rounds wins the match (changed in SETTINGS: 1 / 3 / 5)
 const unsigned long ROUND_OVER_MS = 2500;
 
 // Your gun: semi-auto continuous fire
@@ -151,8 +151,8 @@ float sprDepth;
 bool  onTarget = false;
 
 // ---------------- Game state ----------------
-enum GameState { STATE_PLAYING, STATE_ROUND_OVER };
-GameState state = STATE_PLAYING;
+enum GameState { STATE_MENU, STATE_PLAYING, STATE_ROUND_OVER };
+GameState state = STATE_MENU;
 unsigned long stateStart = 0;
 unsigned long lastShotTime = 0;
 unsigned long muzzleFlashUntil = 0;
@@ -162,6 +162,7 @@ unsigned long damageFlashUntil = 0;
 int roundsPlayer = 0;
 int roundsBot = 0;
 bool matchOver = false;
+bool waitRelease = false;  // ignore movement until the menu "select" button is let go
 
 // ---------------- Per-column raycast results ----------------
 uint8_t wallTop[SCREEN_W];
@@ -262,7 +263,7 @@ void startRound(unsigned long now) {
 
 void endRound(bool playerWon, unsigned long now) {
   if (playerWon) roundsPlayer++; else roundsBot++;
-  matchOver = (roundsPlayer >= ROUNDS_TO_WIN || roundsBot >= ROUNDS_TO_WIN);
+  matchOver = (roundsPlayer >= roundsToWin || roundsBot >= roundsToWin);
   playRoundOverSound(playerWon);
   state = STATE_ROUND_OVER;
   stateStart = now;
@@ -272,6 +273,11 @@ void endRound(bool playerWon, unsigned long now) {
 // ---------------- Input ----------------
 void handleInput(float dt) {
   uint8_t buttons = display.getButtons();
+  if (waitRelease) {               // don't turn/move from the button used to pick START
+    if (buttons) return;
+    waitRelease = false;
+  }
+
   const float moveSpeed = 2.5f * dt;
   const float turnSpeed = 2.5f * dt;
 
@@ -531,7 +537,7 @@ void drawRoundOverScreen(bool playerWon) {
   if (matchOver) {
     display.fontColor(TS_8b_Yellow, TS_8b_Black);
     display.setCursor(24, 44);
-    display.print(roundsPlayer >= ROUNDS_TO_WIN ? "MATCH WON!" : "MATCH LOST");
+    display.print(roundsPlayer >= roundsToWin ? "MATCH WON!" : "MATCH LOST");
   }
 }
 
@@ -539,6 +545,160 @@ void drawRoundOverScreen(bool playerWon) {
 unsigned long lastFrame = 0;
 unsigned long lastFpsTime = 0;
 int frames = 0;
+// ---------------- Menus ----------------
+// Controls: upper-left = up, lower-left = down, either right button = select
+enum MenuScreen { SCR_MAIN, SCR_MULTI, SCR_SETTINGS, SCR_HOWTO, SCR_WAITING };
+int screen = SCR_MAIN;
+int sel = 0;              // highlighted item on the current screen
+uint8_t prevButtons = 0;
+uint8_t role = 0;         // 0 = Player A (host), 1 = Player B (join) - used by the BLE code later
+
+const char *MAIN_ITEMS[] = { "SINGLEPLAYER", "MULTIPLAYER", "SETTINGS", "HOW TO PLAY" };
+const char *MP_ITEMS[]   = { "HOST (A)", "JOIN (B)", "BACK" };
+
+// Only buttons that were *just* pressed this frame (holding doesn't repeat)
+uint8_t pressedButtons() {
+  uint8_t b = display.getButtons();
+  uint8_t pressed = b & ~prevButtons;
+  prevButtons = b;
+  return pressed;
+}
+
+void printCentered(const char *text, int y, uint8_t colour) {
+  display.fontColor(colour, TS_8b_Black);
+  int w = display.getPrintWidth((char *)text);
+  display.setCursor((SCREEN_W - w) / 2, y);
+  display.print(text);
+}
+
+void printLeft(const char *text, int y, uint8_t colour) {
+  display.fontColor(colour, TS_8b_Black);
+  display.setCursor(2, y);
+  display.print(text);
+}
+
+void drawItem(const char *text, int y, bool selected) {
+  char buf[24];
+  if (selected) snprintf(buf, sizeof(buf), "> %s <", text);
+  else          snprintf(buf, sizeof(buf), "%s", text);
+  printCentered(buf, y, selected ? TS_8b_White : TS_8b_Gray);
+}
+
+int itemCount() {
+  switch (screen) {
+    case SCR_MAIN:     return 4;
+    case SCR_MULTI:    return 3;
+    case SCR_SETTINGS: return 2;
+    default:           return 1;  // text screens: only "back"
+  }
+}
+
+// Drawn once on entry / when the selection changes (not every frame)
+void drawScreen() {
+  display.clearScreen();
+  display.setFont(thinPixel7_10ptFontInfo);
+  char buf[20];
+
+  switch (screen) {
+    case SCR_MAIN:
+      printCentered("TINYBOY", 1, TS_8b_Yellow);
+      for (int i = 0; i < 4; i++) drawItem(MAIN_ITEMS[i], 14 + i * 11, sel == i);
+      break;
+
+    case SCR_MULTI:
+      printCentered("MULTIPLAYER", 1, TS_8b_Yellow);
+      for (int i = 0; i < 3; i++) drawItem(MP_ITEMS[i], 16 + i * 12, sel == i);
+      break;
+
+    case SCR_SETTINGS:
+      printCentered("SETTINGS", 1, TS_8b_Yellow);
+      printCentered("Rounds to win:", 15, TS_8b_White);
+      snprintf(buf, sizeof(buf), "%d", roundsToWin);
+      drawItem(buf, 26, sel == 0);
+      drawItem("BACK", 40, sel == 1);
+      printCentered("R: change", 54, TS_8b_Blue);
+      break;
+
+    case SCR_HOWTO:
+      printCentered("HOW TO PLAY", 1, TS_8b_Yellow);
+      printLeft("L stick: move",     13, TS_8b_White);
+      printLeft("R stick: look",     23, TS_8b_White);
+      printLeft("Gun fires itself",  33, TS_8b_White);
+      printLeft("2 hits wins round", 43, TS_8b_White);
+      printCentered("R: back", 54, TS_8b_Blue);
+      break;
+
+    case SCR_WAITING:
+      printCentered(role == 0 ? "HOST" : "JOIN", 1, TS_8b_Yellow);
+      printCentered(role == 0 ? "You are Player A" : "You are Player B", 18,
+                    role == 0 ? TS_8b_Blue : TS_8b_Red);
+      printCentered(role == 0 ? "Waiting for B..." : "Looking for A...", 32, TS_8b_White);
+      printCentered("R: back", 54, TS_8b_Blue);
+      break;
+  }
+}
+
+void goTo(int scr, int s) {
+  screen = scr;
+  sel = s;
+  drawScreen();
+}
+
+void enterMenu() {
+  state = STATE_MENU;
+  prevButtons = display.getButtons();  // a button already held doesn't count as a press
+  goTo(SCR_MAIN, 0);
+}
+
+void startGame(unsigned long now) {
+  matchOver = true;     // makes startRound() reset the scores for a fresh match
+  waitRelease = true;
+  startRound(now);
+  lastFpsTime = now;
+  frames = 0;
+}
+
+void updateMenu(unsigned long now) {
+  uint8_t p = pressedButtons();
+
+  // Move the highlight
+  int old = sel;
+  if ((p & TSButtonUpperLeft) && sel > 0)               sel--;
+  if ((p & TSButtonLowerLeft) && sel < itemCount() - 1) sel++;
+  if (sel != old) drawScreen();
+
+  if (!(p & (TSButtonUpperRight | TSButtonLowerRight))) return;  // no select
+
+  switch (screen) {
+    case SCR_MAIN:
+      if      (sel == 0) startGame(now);           // SINGLEPLAYER: raycaster_v4 vs bot
+      else if (sel == 1) goTo(SCR_MULTI, 0);
+      else if (sel == 2) goTo(SCR_SETTINGS, 0);
+      else               goTo(SCR_HOWTO, 0);
+      break;
+
+    case SCR_MULTI:
+      if (sel == 2) { goTo(SCR_MAIN, 1); break; }  // BACK
+      role = sel;                                  // 0 = host (A), 1 = join (B)
+      goTo(SCR_WAITING, 0);
+      // TODO (when duel_v3 BLE code is merged): start BLE here with `role`,
+      //      and call startGame() once connected.
+      break;
+
+    case SCR_SETTINGS:
+      if (sel == 0) {                              // cycle 1 -> 3 -> 5 -> 1
+        roundsToWin = (roundsToWin == 1) ? 3 : (roundsToWin == 3) ? 5 : 1;
+        drawScreen();
+      } else {
+        goTo(SCR_MAIN, 2);                         // BACK
+      }
+      break;
+
+    case SCR_HOWTO:   goTo(SCR_MAIN, 3);    break;
+    case SCR_WAITING: goTo(SCR_MULTI, role); break;
+  }
+}
+
 
 void setup() {
   display.begin();
@@ -547,7 +707,8 @@ void setup() {
   SerialUSB.begin(9600);
   randomSeed(micros());
   lastFrame = millis();
-  startRound(millis());
+  enterMenu();
+
 }
 
 void loop() {
@@ -556,8 +717,13 @@ void loop() {
   lastFrame = now;
   if (dt > 0.1f) dt = 0.1f;
 
+  if (state == STATE_MENU)  { updateMenu(now);  return; }
+
   if (state == STATE_ROUND_OVER) {
-    if (now - stateStart >= ROUND_OVER_MS) startRound(now);
+    if (now - stateStart >= ROUND_OVER_MS) {
+      if (matchOver) enterMenu();   // match finished -> back to main menu
+      else           startRound(now);
+    }
     lastFpsTime = now;  // don't count the pause in the FPS
     frames = 0;
     return;
