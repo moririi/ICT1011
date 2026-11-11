@@ -59,7 +59,8 @@ def seconds_per_square(trail):
     return grid
 
 
-def draw(match, positions, out_path: Path):
+def draw(match, positions, out_path):
+    """Save the heatmap as PNG to out_path (a file path or a file object)."""
     walls = np.array(WORLD_MAP) > 0
     slots = sorted(positions)
     fig, axes = plt.subplots(1, len(slots), figsize=(5 * len(slots), 5.4))
@@ -83,7 +84,7 @@ def draw(match, positions, out_path: Path):
     winner = match.get("winner") or "none"
     fig.suptitle(f"Match {match['id']} heatmap · {match['status']} · winner: {winner}")
     fig.tight_layout()
-    fig.savefig(out_path, dpi=120)
+    fig.savefig(out_path, dpi=120, format="png")
     plt.close(fig)
 
 

@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import io
 import json
 import logging
 import os
@@ -15,6 +16,8 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
 )
+
+from heatmap import draw as draw_heatmap
 
 # Load environment variables from .env
 load_dotenv()
@@ -140,6 +143,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🏆 `/leaderboard` - Player rankings by wins\n"
         "📊 `/stats <name>` - Career stats for a specific player\n"
         "⚔️ `/lastmatch` - Details of the most recent finished match\n"
+        "🔥 `/heatmap [match_id]` - Where each player spent their time (default: latest match)\n"
         "ℹ️ `/help` - Show this list"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
@@ -256,6 +260,48 @@ async def lastmatch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
+def render_heatmap_png(match: dict) -> io.BytesIO:
+    """Loads the match's positions file and draws its heatmap into memory."""
+    with open(DATA_DIR / match["positions_file"], "r", encoding="utf-8") as f:
+        positions = json.load(f)
+    image = io.BytesIO()
+    draw_heatmap(match, positions, image)
+    image.seek(0)
+    return image
+
+
+async def heatmap_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = read_data_safely()
+    matches = [m for m in data.get("matches", []) if m.get("positions_file")]
+
+    if not matches:
+        await update.message.reply_text("No matches with position data yet.")
+        return
+
+    if context.args:
+        try:
+            match_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Usage: `/heatmap [match_id]`", parse_mode=ParseMode.MARKDOWN)
+            return
+        match = next((m for m in matches if m.get("id") == match_id), None)
+        if match is None:
+            await update.message.reply_text(f"No position data for match #{match_id}.")
+            return
+    else:
+        match = matches[-1]
+
+    try:
+        # Drawing takes ~1 s, so run it off the event loop
+        image = await asyncio.to_thread(render_heatmap_png, match)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"Could not draw heatmap for match #{match.get('id')}: {e}")
+        await update.message.reply_text(f"Could not read the position data for match #{match.get('id')}.")
+        return
+
+    await update.message.reply_photo(photo=image, caption=f"🔥 Heatmap – Match #{match['id']}")
+
+
 # ==========================================
 # BACKGROUND AUTO-REPORT JOB
 # ==========================================
@@ -325,6 +371,7 @@ def main():
     app.add_handler(CommandHandler("leaderboard", leaderboard_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("lastmatch", lastmatch_command))
+    app.add_handler(CommandHandler("heatmap", heatmap_command))
 
     # Set up background polling job (every 3.0 seconds)
     if TELEGRAM_CHAT_ID:
