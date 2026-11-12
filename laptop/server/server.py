@@ -25,7 +25,6 @@ def run_demo(n_bots=4, seconds=120, kills_to_win=5, seed=None, realtime=False, o
     brains = []
     for i in range(n_bots):
         p = game.add_player(10 + i, f"Bot{i + 1}", is_bot=True)
-        p.x, p.y = game.map.spawns[i % len(game.map.spawns)]
         brains.append(BotBrain(game, p))
 
     dt = 1.0 / TICK_HZ

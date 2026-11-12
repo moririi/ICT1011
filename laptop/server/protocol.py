@@ -66,7 +66,7 @@ def build_world(game_state, my_health, flags, entities):
     entities = entities[:MAX_ENTITIES]
     out = struct.pack("<BBBBB", MAGIC_WORLD, game_state, my_health, flags, len(entities))
     for eid, x, y in entities:
-        out += struct.pack("<BBB", eid, min(255, int(x * 16)), min(255, int(y * 16)))
+        out += struct.pack("<BBB", eid, max(0, min(255, int(x * 16))), max(0, min(255, int(y * 16))))
     return out
 
 

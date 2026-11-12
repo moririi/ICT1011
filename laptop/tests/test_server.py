@@ -80,6 +80,12 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(w["health"], 2)
         self.assertAlmostEqual(w["entities"][0][1], 2.5, places=1)
 
+    def test_world_packet_clamps_out_of_range(self):
+        data = protocol.build_world(1, 2, 0, [(0, -1.0, 3.0), (1, 20.0, 99.0)])
+        w = protocol.parse_world(data)
+        self.assertEqual(w["entities"][0][1], 0.0)
+        self.assertLessEqual(w["entities"][1][1], 16.0)
+
 
 class RulesTests(unittest.TestCase):
     def test_clear_shot_hits_and_kills(self):
@@ -168,6 +174,16 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(len(s["players"]), 1)
         self.assertEqual(len(s["bots"]), 1)
         self.assertEqual(set(s["bots"][0]), {"id", "x", "y", "hp"})
+
+    def test_respawn_uses_same_spawn_as_first_spawn(self):
+        g = Game(rng=random.Random(0))
+        bots = [g.add_player(10 + i, f"Bot{i}", is_bot=True) for i in range(4)]
+        starts = [(b.x, b.y) for b in bots]
+        self.assertEqual(len(set(starts)), 4)               # four different corners
+        for b in bots:
+            b.x, b.y = 8.5, 8.5
+            g.spawn(b)
+        self.assertEqual([(b.x, b.y) for b in bots], starts)
 
 
 class BotTests(unittest.TestCase):

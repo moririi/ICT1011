@@ -26,6 +26,7 @@ class Player:
     alive: bool = True
     respawn_at: float = 0.0
     last_shot: float = -99.0
+    spawn_idx: int = 0          # which spawn point this player uses (join order)
 
 
 class FreeForAll:
@@ -68,13 +69,13 @@ class Game:
 
     # ---- setup -------------------------------------------------------
     def add_player(self, pid, name, is_bot=False):
-        p = Player(pid, name, is_bot)
+        p = Player(pid, name, is_bot, spawn_idx=len(self.players))
         self.players[pid] = p
         self.spawn(p)
         return p
 
     def spawn(self, p):
-        sx, sy = self.map.spawns[p.id % len(self.map.spawns)]
+        sx, sy = self.map.spawns[p.spawn_idx % len(self.map.spawns)]
         p.x, p.y, p.hp, p.alive = sx, sy, self.MAX_HP, True
 
     def restart(self):
