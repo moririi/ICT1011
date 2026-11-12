@@ -10,6 +10,13 @@ from server.server import run_demo
 from server.world import GameMap
 
 
+def new_game(**kw):
+    """A Game already in the PLAYING state (skips the lobby)."""
+    g = Game(**kw)
+    g.state = "playing"
+    return g
+
+
 def two_players(game, shooter_xy=(2.5, 2.5), target_xy=(5.5, 2.5)):
     a = game.add_player(0, "A")
     b = game.add_player(1, "B")
@@ -89,7 +96,7 @@ class ProtocolTests(unittest.TestCase):
 
 class RulesTests(unittest.TestCase):
     def test_clear_shot_hits_and_kills(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         a, b = two_players(g)
         self.assertTrue(g.try_hit(0, 1, 1.0))
         self.assertEqual(b.hp, 1)
@@ -99,31 +106,31 @@ class RulesTests(unittest.TestCase):
         self.assertIn("A eliminated B", g.feed)
 
     def test_fire_rate_limited(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         _, b = two_players(g)
         self.assertTrue(g.try_hit(0, 1, 1.0))
         self.assertFalse(g.try_hit(0, 1, 1.1))     # 0.1 s later: too fast
         self.assertEqual(b.hp, 1)
 
     def test_wall_blocks_hit(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         two_players(g, (2.5, 2.5), (13.5, 13.5))
         self.assertFalse(g.try_hit(0, 1, 1.0))
 
     def test_must_be_aiming_at_target(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         a, _ = two_players(g)
         a.angle += 1.5
         self.assertFalse(g.try_hit(0, 1, 1.0))
 
     def test_out_of_range(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         a, b = two_players(g, (1.5, 8.5), (14.5, 8.5))
         a.angle = 0.0
         self.assertFalse(g.try_hit(0, 1, 1.0))
 
     def test_cannot_shoot_self_dead_or_unknown(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         _, b = two_players(g)
         self.assertFalse(g.try_hit(0, 0, 1.0))
         self.assertFalse(g.try_hit(0, 99, 1.0))
@@ -131,7 +138,7 @@ class RulesTests(unittest.TestCase):
         self.assertFalse(g.try_hit(0, 1, 1.0))
 
     def test_respawn(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         _, b = two_players(g)
         g.try_hit(0, 1, 1.0)
         g.try_hit(0, 1, 1.5)
@@ -142,7 +149,7 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(b.hp, Game.MAX_HP)
 
     def test_ffa_winner_and_pause(self):
-        g = Game(mode=FreeForAll(kills_to_win=1), rng=random.Random(0))
+        g = new_game(mode=FreeForAll(kills_to_win=1), rng=random.Random(0))
         a, _ = two_players(g)
         g.paused = True
         self.assertFalse(g.try_hit(0, 1, 1.0))      # no hits while paused
@@ -156,7 +163,7 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(a.kills, 0)
 
     def test_watch_state_applies_and_fires(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         a, b = two_players(g)
         st = protocol.State(0, 1, 2.5, 2.5, 0.0, True, False, 1)
         self.assertTrue(g.apply_state(st, 1.0))
@@ -166,7 +173,7 @@ class RulesTests(unittest.TestCase):
         self.assertEqual((a.x, a.y), (2.5, 2.5))     # position inside a wall ignored
 
     def test_snapshot_shape(self):
-        g = Game()
+        g = new_game()
         g.add_player(0, "A")
         g.add_player(10, "Bot", is_bot=True)
         s = g.snapshot()
@@ -176,7 +183,7 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(set(s["bots"][0]), {"id", "x", "y", "hp"})
 
     def test_respawn_uses_same_spawn_as_first_spawn(self):
-        g = Game(rng=random.Random(0))
+        g = new_game(rng=random.Random(0))
         bots = [g.add_player(10 + i, f"Bot{i}", is_bot=True) for i in range(4)]
         starts = [(b.x, b.y) for b in bots]
         self.assertEqual(len(set(starts)), 4)               # four different corners
@@ -186,9 +193,136 @@ class RulesTests(unittest.TestCase):
         self.assertEqual([(b.x, b.y) for b in bots], starts)
 
 
+def state_pkt(pid, x, y, angle=0.0, fired=False, ready=False, target=0xFF):
+    return protocol.State(pid, 0, x, y, angle, fired, ready, target)
+
+
+class LifecycleTests(unittest.TestCase):
+    def test_lobby_waits_for_everyone_ready(self):
+        g = Game(rng=random.Random(0))
+        g.add_player(0, "A")
+        g.add_player(1, "B")
+        g.tick(0.1)
+        self.assertEqual(g.state, "lobby")
+        g.apply_state(state_pkt(0, 2.5, 2.5, ready=True), 0.2)
+        g.tick(0.3)
+        self.assertEqual(g.state, "lobby")                  # B is not ready yet
+        g.apply_state(state_pkt(1, 13.5, 13.5, ready=True), 0.4)
+        g.tick(0.5)
+        self.assertEqual(g.state, "playing")
+        self.assertIn("match started", g.feed)
+
+    def test_one_player_never_starts(self):
+        g = Game()
+        g.add_player(0, "A").ready = True
+        g.tick(1.0)
+        self.assertEqual(g.state, "lobby")
+
+    def test_no_hits_in_lobby_or_after_match(self):
+        g = Game(rng=random.Random(0))
+        a, b = two_players(g)
+        self.assertFalse(g.try_hit(0, 1, 1.0))              # lobby
+        g.start_match(1.0)
+        a.x, a.y, b.x, b.y = 2.5, 2.5, 5.5, 2.5
+        a.angle = 0.0
+        g.end_match(a)
+        self.assertFalse(g.try_hit(0, 1, 3.0))              # match over
+
+    def test_missed_shots_are_counted_once_per_cooldown(self):
+        g = new_game(rng=random.Random(0))
+        a, _ = two_players(g)
+        g.apply_state(state_pkt(0, 2.5, 2.5, fired=True), 1.0)       # nobody in the crosshair
+        g.apply_state(state_pkt(0, 2.5, 2.5, fired=True), 1.05)      # same trigger pull, next packet
+        self.assertEqual((a.shots, a.hits), (1, 0))
+        g.apply_state(state_pkt(0, 2.5, 2.5, fired=True), 1.5)
+        self.assertEqual(a.shots, 2)
+
+    def test_time_up_most_kills_wins(self):
+        g = new_game(match_seconds=5.0, rng=random.Random(0))
+        a, b = two_players(g)
+        a.kills = 1
+        t = 0.0
+        while g.state == "playing" and t < 10:
+            t += 0.1
+            g.tick(t)
+        self.assertEqual(g.state, "over")
+        self.assertIs(g.winner, a)
+        self.assertEqual(g.result, "win")
+        self.assertLess(t, 5.5)
+
+    def test_time_up_tiebreak_fewer_deaths_then_draw(self):
+        g = new_game(match_seconds=1.0, rng=random.Random(0))
+        a, b = two_players(g)
+        a.kills = b.kills = 2
+        a.deaths, b.deaths = 1, 3
+        g.state, g.time_left = "playing", 0.0
+        g.tick(0.1)
+        self.assertIs(g.winner, a)                          # same kills, A died less
+
+        g2 = new_game(match_seconds=1.0, rng=random.Random(0))
+        two_players(g2)
+        for i in range(1, 30):
+            g2.tick(i * 0.1)
+        self.assertEqual(g2.state, "over")
+        self.assertIsNone(g2.winner)
+        self.assertEqual(g2.result, "draw")
+
+    def test_pause_freezes_the_clock(self):
+        g = new_game(match_seconds=5.0)
+        two_players(g)
+        g.tick(0.1)
+        g.paused = True
+        for i in range(2, 100):
+            g.tick(i * 0.1)
+        self.assertEqual(g.state, "playing")
+        self.assertAlmostEqual(g.time_left, 4.9, places=2)      # only the one tick before the pause counted
+        self.assertEqual(g.protocol_state(), protocol.GAME_PAUSED)
+
+    def test_a_long_stall_does_not_eat_the_clock(self):
+        g = new_game(match_seconds=60.0)
+        two_players(g)
+        g.tick(0.1)
+        g.tick(30.0)                                        # the server froze for 30 s
+        self.assertGreater(g.time_left, 59.0)
+
+    def test_reset_to_lobby(self):
+        g = new_game()
+        a, _ = two_players(g)
+        g.end_match(a)
+        self.assertEqual(g.protocol_state(), protocol.GAME_ROUND_OVER)
+        g.reset_to_lobby()
+        self.assertEqual((g.state, g.winner, g.result), ("lobby", None, ""))
+
+    def test_teleport_rejected_then_allowed_after_time(self):
+        g = new_game()
+        a, _ = two_players(g, (2.5, 2.5), (13.5, 13.5))
+        g.apply_state(state_pkt(0, 2.5, 2.5), 1.0)
+        g.apply_state(state_pkt(0, 13.5, 2.5), 1.05)        # 11 squares in 0.05 s
+        self.assertEqual((a.x, a.y), (2.5, 2.5))
+        g.apply_state(state_pkt(0, 5.5, 2.5), 2.0)          # a normal walk is fine
+        self.assertEqual((a.x, a.y), (5.5, 2.5))
+
+    def test_respawn_goes_to_the_farthest_spawn(self):
+        g = new_game()
+        a, b = two_players(g)
+        a.x, a.y = 2.5, 2.5                                 # A stands in the top-left corner
+        b.alive, b.respawn_at = False, 1.0
+        g.tick(1.5)
+        self.assertTrue(b.alive)
+        self.assertEqual((b.x, b.y), (13.5, 13.5))          # opposite corner
+
+    def test_snapshot_has_match_info(self):
+        g = new_game()
+        two_players(g)
+        s = g.snapshot()
+        self.assertEqual(s["state"], "playing")
+        self.assertIn("time_left", s)
+        self.assertIsNone(s["winner"])
+
+
 class BotTests(unittest.TestCase):
     def test_bot_hunts_and_shoots_visible_enemy(self):
-        g = Game(rng=random.Random(3))
+        g = new_game(rng=random.Random(3))
         a, b = two_players(g, (2.5, 2.5), (6.5, 2.5))
         brain = BotBrain(g, a)
         t = 0.0
@@ -198,18 +332,33 @@ class BotTests(unittest.TestCase):
         self.assertLess(b.hp, Game.MAX_HP)
 
     def test_bot_stays_out_of_walls(self):
-        g = Game(rng=random.Random(5))
+        g = new_game(rng=random.Random(5))
         bot = g.add_player(10, "Bot", is_bot=True)
         brain = BotBrain(g, bot)
         for i in range(2000):
             brain.update(0.05, i * 0.05)
             self.assertFalse(g.map.is_wall(bot.x, bot.y))
 
+    def test_hurt_bot_keeps_fleeing_when_enemy_out_of_sight(self):
+        g = new_game(rng=random.Random(2))
+        bot = g.add_player(10, "Bot", is_bot=True)
+        foe = g.add_player(0, "Foe")
+        bot.x, bot.y, bot.hp = 2.5, 2.5, 1
+        foe.x, foe.y = 5.5, 2.5
+        brain = BotBrain(g, bot)
+        t = 0.0
+        brain.update(0.05, t := t + 0.05)
+        self.assertEqual(brain.state, "flee")
+        foe.alive = False                                   # the enemy vanishes from view
+        while t < brain.flee_until - 0.1:
+            brain.update(0.05, t := t + 0.05)
+            self.assertEqual(brain.state, "flee")
+
     def test_demo_match_finishes_deterministically(self):
         lines1, lines2 = [], []
         g1 = run_demo(4, 300, 5, seed=1, out=lines1.append)
         run_demo(4, 300, 5, seed=1, out=lines2.append)
-        self.assertIsNotNone(g1.winner)
+        self.assertEqual(g1.state, "over")
         self.assertEqual(lines1, lines2)
 
 

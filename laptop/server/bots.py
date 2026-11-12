@@ -33,6 +33,7 @@ class BotBrain:
         self.seen_since = None
         self.flee_until = 0.0
         self.flee_ready_at = 0.0
+        self.flee_from = None     # where the enemy was when the bot started running
 
     # ---- perception --------------------------------------------------
     def _visible_enemy(self):
@@ -90,10 +91,11 @@ class BotBrain:
         if not self.path:
             self.last_known = None
 
-    def _flee(self, enemy, dt):
+    def _flee(self, dt):
+        fx, fy = self.flee_from
         if not self.path:
             far = max(self.game.map.open_cells(),
-                      key=lambda c: math.hypot(c[0] + .5 - enemy.x, c[1] + .5 - enemy.y)
+                      key=lambda c: math.hypot(c[0] + .5 - fx, c[1] + .5 - fy)
                       + self.game.rng.random())
             self._goto(*centre_of(far))
         self._follow(dt, 1.2)
@@ -119,19 +121,26 @@ class BotBrain:
         p = self.p
         if not p.alive:
             self.path, self.state, self.seen_since, self.last_known = [], "patrol", None, None
+            self.flee_until = self.flee_ready_at = 0.0
+            self.flee_from = None
             return
-        if self.game.paused or self.game.winner:
+        if not self.game.active:
             return
         enemy = self._visible_enemy()
+        fleeing = now < self.flee_until          # a flee runs its full time, even out of sight
         if enemy:
             self.last_known = (enemy.x, enemy.y)
-            fleeing = now < self.flee_until
             if p.hp <= 1 and not fleeing and now >= self.flee_ready_at:
                 self.flee_until = now + self.FLEE_S
                 self.flee_ready_at = self.flee_until + self.FLEE_COOLDOWN_S
                 self.path = []
                 fleeing = True
-            self.state = "flee" if fleeing else "attack"
+            if fleeing:
+                self.flee_from = (enemy.x, enemy.y)
+        if fleeing:
+            self.state = "flee"
+        elif enemy:
+            self.state = "attack"
         elif self.last_known is not None:
             self.state = "hunt"
         else:
@@ -142,7 +151,7 @@ class BotBrain:
         if self.state == "attack":
             self._attack(enemy, dt, now)
         elif self.state == "flee":
-            self._flee(enemy, dt)
+            self._flee(dt)
         elif self.state == "hunt":
             self._hunt(dt)
         else:

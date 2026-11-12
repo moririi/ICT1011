@@ -30,7 +30,7 @@ def run_demo(n_bots=4, seconds=120, kills_to_win=5, seed=None, realtime=False, o
     dt = 1.0 / TICK_HZ
     shown = 0
     t = 0.0
-    while t < seconds and not game.winner:
+    while t < seconds and game.state != "over":
         t += dt
         for b in brains:
             b.update(dt, t)
