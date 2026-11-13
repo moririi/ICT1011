@@ -354,6 +354,22 @@ class BotTests(unittest.TestCase):
             brain.update(0.05, t := t + 0.05)
             self.assertEqual(brain.state, "flee")
 
+    def test_bots_reset_their_path_when_the_server_teleports_them(self):
+        for seed in range(5):
+            g = Game(rng=random.Random(seed), match_seconds=0)
+            brains = [BotBrain(g, g.add_player(10 + i, f"B{i}", is_bot=True)) for i in range(2)]
+            g.tick(0.05)
+            t = 0.05
+            for i in range(1, 1500):
+                t += 0.05
+                if i % 50 == 0:
+                    g.restart()                      # every bot jumps back to its spawn
+                for b in brains:
+                    b.update(0.05, t)
+                g.tick(t)
+                for p in g.players.values():
+                    self.assertFalse(g.map.is_wall(p.x, p.y), (seed, i, p.id, p.x, p.y))
+
     def test_demo_match_finishes_deterministically(self):
         lines1, lines2 = [], []
         g1 = run_demo(4, 300, 5, seed=1, out=lines1.append)

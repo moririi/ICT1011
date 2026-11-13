@@ -9,6 +9,7 @@ Match lifecycle:  LOBBY --(everyone ready)--> PLAYING --(kills reached / time up
 """
 import math
 import random
+from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
@@ -37,6 +38,11 @@ class Player:
     last_shot: float = -99.0
     last_state_t: Optional[float] = None   # time of the last accepted position (None after a spawn)
     spawn_idx: int = 0          # which spawn point this player starts on (join order)
+    hurt_until: float = 0.0     # WORLD flag stays on briefly: you were hit
+    scored_until: float = 0.0   # WORLD flag stays on briefly: you landed a hit
+    awaiting_spawn: bool = False  # server moved this player: ignore positions until the watch arrives
+    spawn_deadline: float = 0.0   # ... or until this time, in case the watch never got the message
+    spawns: int = 0             # how many times the server has placed this player (bots use it to notice a teleport)
 
     @property
     def accuracy(self):
@@ -72,6 +78,9 @@ class Game:
     RESPAWN_S = 2.0
     MAX_SPEED = 4.0          # squares/second a position update may imply (the watch walks at 2.5)
     SPEED_SLACK = 0.5        # extra squares allowed for rounding / jitter
+    SPAWN_CONFIRM_RADIUS = 1.0   # the watch counts as arrived when this close to its spawn
+    SPAWN_CONFIRM_S = 2.0        # after this long we trust the watch position again
+    FLAG_S = 0.3             # how long the hit / scored flags stay on
 
     def __init__(self, game_map=None, mode=None, rng=None, match_seconds=180.0, min_players=2):
         self.map = game_map or GameMap()
@@ -81,6 +90,7 @@ class Game:
         self.min_players = min_players
         self.players = {}
         self.feed = []           # human-readable events, newest last
+        self.events = deque(maxlen=200)   # machine events for the watches: ("kill", k, v) ...
         self.now = 0.0
         self.state = LOBBY
         self.paused = False
@@ -104,6 +114,8 @@ class Game:
         """Put a player on their own starting spawn point at full health."""
         p.x, p.y = self.map.spawns[p.spawn_idx % len(self.map.spawns)]
         p.hp, p.alive, p.last_state_t = self.MAX_HP, True, None
+        p.awaiting_spawn, p.spawn_deadline = True, self.now + self.SPAWN_CONFIRM_S
+        p.spawns += 1
 
     def respawn(self, p):
         """Respawn on the spawn point farthest from every living enemy (stops spawn camping)."""
@@ -116,6 +128,8 @@ class Game:
         best = max(range(len(self.map.spawns)), key=lambda i: (clearance(i), -i))
         p.x, p.y = self.map.spawns[best]
         p.hp, p.alive, p.last_state_t = self.MAX_HP, True, None
+        p.awaiting_spawn, p.spawn_deadline = True, self.now + self.SPAWN_CONFIRM_S
+        p.spawns += 1
 
     # ---- lifecycle ---------------------------------------------------
     def start_match(self, now, label="match started"):
@@ -123,11 +137,13 @@ class Game:
         for p in self.players.values():
             p.kills = p.deaths = p.shots = p.hits = 0
             p.last_shot = -99.0
+            p.hurt_until = p.scored_until = 0.0
             self.spawn(p)
         self.state, self.paused = PLAYING, False
         self.winner, self.result = None, ""
         self.time_left = self.match_seconds
         self.feed.append(label)
+        self.events.append(("match_start",))
 
     def restart(self):
         """Referee restart: scores reset and the match starts again immediately."""
@@ -137,6 +153,7 @@ class Game:
         self.state = OVER
         self.winner = winner
         self.result = "win" if winner else "draw"
+        self.events.append(("match_end", winner.id if winner else None))
         self.feed.append(f"{winner.name} wins the match" if winner else "match drawn")
 
     def reset_to_lobby(self):
@@ -178,7 +195,13 @@ class Game:
 
     def _plausible(self, p, x, y, now):
         """Reject a position that would need the player to move impossibly fast (teleporting)."""
-        if p.last_state_t is None:                # first packet after a spawn: the watch resets
+        if p.awaiting_spawn:                      # the server moved this player; wait for the watch
+            if (math.hypot(x - p.x, y - p.y) <= self.SPAWN_CONFIRM_RADIUS
+                    or now >= p.spawn_deadline):
+                p.awaiting_spawn = False
+                return True
+            return False
+        if p.last_state_t is None:
             return True
         allowed = self.MAX_SPEED * (now - p.last_state_t) + self.SPEED_SLACK
         return math.hypot(x - p.x, y - p.y) <= allowed
@@ -217,12 +240,14 @@ class Game:
         if self.rng.random() * 100 >= accuracy:
             return False                                   # bots can miss
         s.hits += 1
+        s.scored_until = t.hurt_until = now + self.FLAG_S
         t.hp -= 1
         if t.hp <= 0:
             t.alive = False
             t.deaths += 1
             t.respawn_at = now + self.RESPAWN_S
             self.mode.on_kill(self, s, t)
+            self.events.append(("kill", s.id, t.id))
             self.feed.append(f"{s.name} eliminated {t.name}")
         else:
             self.feed.append(f"{s.name} hit {t.name}")

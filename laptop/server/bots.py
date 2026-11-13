@@ -34,6 +34,13 @@ class BotBrain:
         self.flee_until = 0.0
         self.flee_ready_at = 0.0
         self.flee_from = None     # where the enemy was when the bot started running
+        self._spawns = player.spawns
+
+    def _reset(self):
+        """Forget everything: used after the server moves the bot (respawn, new match)."""
+        self.state, self.path, self.goal = "patrol", [], None
+        self.last_known = self.seen_since = self.flee_from = None
+        self.flee_until = self.flee_ready_at = 0.0
 
     # ---- perception --------------------------------------------------
     def _visible_enemy(self):
@@ -119,10 +126,11 @@ class BotBrain:
     # ---- one step ----------------------------------------------------
     def update(self, dt, now):
         p = self.p
+        if p.spawns != self._spawns:             # the server teleported us: old paths are meaningless
+            self._spawns = p.spawns
+            self._reset()
         if not p.alive:
-            self.path, self.state, self.seen_since, self.last_known = [], "patrol", None, None
-            self.flee_until = self.flee_ready_at = 0.0
-            self.flee_from = None
+            self._reset()
             return
         if not self.game.active:
             return

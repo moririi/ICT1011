@@ -21,6 +21,12 @@ GAME_LOBBY, GAME_PLAYING, GAME_ROUND_OVER, GAME_PAUSED = 0, 1, 2, 3
 WORLD_HIT_ME, WORLD_I_HIT, WORLD_FLARE = 0x01, 0x02, 0x04
 MAX_ENTITIES = 5
 
+# EVENT packet (laptop -> watch): [0xC3, kind, a, b]
+EVT_MATCH_START = 1   # a, b unused
+EVT_MATCH_END = 2     # a = winner id, 0xFF = draw
+EVT_RESPAWN = 3       # a, b = spawn x, y in 1/16 squares: the watch must move there
+EVT_KILL = 4          # a = killer id, b = victim id
+
 
 @dataclass
 class State:
@@ -77,3 +83,19 @@ def parse_world(data: bytes):
     ents = [struct.unpack("<BBB", data[5 + 3 * i: 8 + 3 * i]) for i in range(count)]
     return {"game_state": game_state, "health": health, "flags": flags,
             "entities": [(e, x / 16.0, y / 16.0) for e, x, y in ents]}
+
+
+def pos_to_byte(v):
+    """Map position (squares) -> 1/16-square byte, clamped to 0..255."""
+    return max(0, min(255, int(v * 16)))
+
+
+def build_event(kind, a=0, b=0):
+    return struct.pack("<BBBB", MAGIC_EVENT, kind, a & 0xFF, b & 0xFF)
+
+
+def parse_event(data: bytes):
+    """Return (kind, a, b), or None if this is not an EVENT packet."""
+    if len(data) != 4 or data[0] != MAGIC_EVENT:
+        return None
+    return data[1], data[2], data[3]
