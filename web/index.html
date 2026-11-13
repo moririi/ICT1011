@@ -1,0 +1,1918 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Arena | Command Centre</title>
+
+<style>
+:root {
+  --bg: #080d16;
+  --panel: #141e2c;
+  --border: #2a3a50;
+  --text: #edf3ff;
+  --muted: #91a2bb;
+  --red: #ff5964;
+  --green: #54e6a0;
+  --yellow: #ffd166;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, sans-serif;
+}
+
+.container {
+  max-width: 1350px;
+  margin: auto;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 22px;
+}
+
+h1 {
+  margin: 0;
+  color: var(--red);
+  letter-spacing: 2px;
+}
+
+h2 {
+  font-size: 17px;
+  margin: 0 0 16px;
+}
+
+h3 { font-size: 14px; }
+
+.subtitle, .small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.subtitle { margin-top: 8px; }
+
+.status {
+  background: #463323;
+  color: #ffc37b;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 18px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 20px;
+  margin-bottom: 18px;
+  min-width: 0;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.info-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.info-value {
+  font-size: 22px;
+  font-weight: bold;
+  margin-top: 8px;
+}
+
+.match-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.timer {
+  color: var(--yellow);
+  font-size: 30px;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #40516a;
+  border-radius: 8px;
+  background: #101827;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-top: 15px;
+  font-size: 12px;
+}
+
+.score-head, .score-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px 40px;
+  gap: 8px;
+  align-items: center;
+}
+
+.score-head {
+  color: var(--muted);
+  font-size: 11px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.score-row {
+  padding: 13px 0;
+  border-bottom: 1px solid #28374a;
+}
+
+.player-name {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.stat {
+  text-align: center;
+  font-weight: bold;
+}
+
+.health-track {
+  background: #344055;
+  height: 6px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.health-fill {
+  background: var(--green);
+  height: 100%;
+}
+
+.feed-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #28374a;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+button {
+  background: var(--red);
+  color: white;
+  border: none;
+  padding: 11px 16px;
+  border-radius: 7px;
+  font-weight: bold;
+  cursor: pointer;
+  margin: 4px 5px 4px 0;
+}
+
+button:hover { filter: brightness(1.15); }
+button.secondary { background: #354861; }
+button.green { background: #177a58; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 12px 0;
+}
+
+input, select {
+  width: 100%;
+  background: #0c1523;
+  color: white;
+  border: 1px solid #40526c;
+  border-radius: 7px;
+  padding: 11px;
+  margin-top: 7px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.connection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.table-scroll { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th, td {
+  padding: 13px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+th {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.commentary {
+  background: #0c1523;
+  padding: 20px;
+  border-left: 3px solid #a78bfa;
+  border-radius: 6px;
+  line-height: 1.8;
+  font-size: 14px;
+  min-height: 100px;
+  white-space: pre-wrap;
+}
+
+.notice { color: var(--yellow); }
+
+@media(max-width: 850px) {
+  body { padding: 12px; }
+  .grid { grid-template-columns: 1fr; }
+  .connection { grid-template-columns: 1fr; }
+  .panel { padding: 15px; }
+  h1 { font-size: 23px; }
+}
+
+@media(max-width: 450px) {
+  .info-grid { grid-template-columns: 1fr; }
+  .settings-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+  <div>
+    <h1>🎮 PROJECT ARENA</h1>
+    <div class="subtitle">
+      Multiplayer FPS · Live Spectator & Command Centre
+    </div>
+  </div>
+
+  <div class="status" id="connectionStatus">
+    ● DEMO MODE
+  </div>
+</header>
+
+<section class="panel">
+  <h2>🔗 SERVER CONNECTION</h2>
+
+  <div class="connection">
+    <label>
+      Python Server WebSocket Address
+      <input type="text" id="serverUrl">
+    </label>
+
+    <div>
+      <button class="green" id="connectBtn">
+        Connect
+      </button>
+
+      <button class="secondary" id="demoBtn">
+        Demo Mode
+      </button>
+    </div>
+  </div>
+
+  <p class="small" id="connectionNote">
+    Demo mode is active.
+  </p>
+</section>
+
+<div class="info-grid">
+
+  <div class="info-card">
+    <div class="small">MATCH MODE</div>
+    <div class="info-value" id="modeDisplay">FFA</div>
+  </div>
+
+  <div class="info-card">
+    <div class="small">PLAYERS</div>
+    <div class="info-value" id="playersDisplay">4 / 4</div>
+  </div>
+
+  <div class="info-card">
+    <div class="small">MATCH STATUS</div>
+    <div class="info-value" id="statusDisplay">
+      PLAYING
+    </div>
+  </div>
+
+</div>
+
+<div class="grid">
+
+  <div>
+
+    <section class="panel">
+      <div class="match-header">
+        <div>
+          <h2>🗺️ LIVE TACTICAL MAP</h2>
+          <div class="small">
+            Top-down spectator view · Connected maze
+          </div>
+        </div>
+
+        <div class="timer" id="timer">02:00</div>
+      </div>
+
+      <canvas id="gameMap"></canvas>
+
+      <div class="legend" id="mapLegend"></div>
+
+      <p class="small">
+        Demo players pursue opponents and only fire
+        when a target is within range and visible.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>🎛️ REFEREE CONTROL PANEL</h2>
+
+      <div class="controls">
+        <button id="pauseBtn">⏸ Pause Match</button>
+
+        <button class="secondary" id="restartBtn">
+          ↻ Restart
+        </button>
+
+        <button class="green" id="finishBtn">
+          Finish Demo Match
+        </button>
+      </div>
+
+      <h3>Game Settings</h3>
+
+      <div class="settings-grid">
+        <label>
+          Game Mode
+          <select id="gameMode">
+            <option value="ffa">Free For All</option>
+            <option value="tdm">Team Deathmatch</option>
+            <option value="koth">King of the Hill</option>
+          </select>
+        </label>
+
+        <label>
+          Match Duration
+          <select id="matchDuration">
+            <option value="60">1 Minute</option>
+            <option value="120" selected>2 Minutes</option>
+            <option value="180">3 Minutes</option>
+            <option value="300">5 Minutes</option>
+          </select>
+        </label>
+      </div>
+
+      <label>
+        Host Token (Live Server Only)
+        <input type="password" id="hostToken"
+          placeholder="Provided by Python server teammate">
+      </label>
+
+      <button class="secondary" id="applySettingsBtn">
+        Apply Settings
+      </button>
+
+      <p class="small">
+        Demo controls operate locally. Live referee commands
+        require support and authentication on the server.
+      </p>
+
+      <p class="small notice" id="refereeNotice"></p>
+    </section>
+
+  </div>
+
+  <div>
+
+    <section class="panel">
+      <h2>🏆 LIVE SCOREBOARD</h2>
+
+      <div class="score-head">
+        <span>PLAYER / HEALTH</span>
+        <span class="stat">K</span>
+        <span class="stat">D</span>
+      </div>
+
+      <div id="scoreboard"></div>
+    </section>
+
+    <section class="panel">
+      <h2>💥 LIVE KILL FEED</h2>
+      <div id="killFeed"></div>
+    </section>
+
+    <section class="panel">
+      <h2>📡 MATCH INFORMATION</h2>
+
+      <p>Round: <strong id="roundDisplay">1</strong></p>
+      <p>Match ID: <strong id="matchIdDisplay">-</strong></p>
+      <p>Leading Player:
+        <strong id="leaderDisplay">-</strong>
+      </p>
+
+      <p class="small" id="matchMessage">
+        Match in progress.
+      </p>
+    </section>
+
+  </div>
+
+</div>
+
+<section class="panel">
+  <h2>🥇 ALL-TIME LEADERBOARD</h2>
+
+  <p class="small" id="leaderboardNote"></p>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>RANK</th>
+          <th>PLAYER</th>
+          <th>WINS</th>
+          <th>MATCHES</th>
+          <th>KILLS</th>
+          <th>DEATHS</th>
+          <th>K/D</th>
+        </tr>
+      </thead>
+
+      <tbody id="leaderboardBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>📜 RECENT MATCH HISTORY</h2>
+  <div id="matchHistory"></div>
+</section>
+
+<section class="panel">
+  <h2>🤖 AI MATCH COMMENTARY</h2>
+
+  <p class="small">
+    Generate a post-match report.
+    Demo mode produces a statistics-based summary,
+    while live AI commentary requires the Python server.
+  </p>
+
+  <div class="commentary" id="commentary">
+    Awaiting match completion.
+  </div>
+
+  <div style="margin-top:15px">
+    <button id="generateCommentaryBtn">
+      ✨ Generate Match Report
+    </button>
+  </div>
+
+  <p class="small" id="aiStatus"></p>
+</section>
+
+<footer class="small" style="text-align:center;padding:20px">
+  PROJECT ARENA · ICT1011 · TinyScreen+ Multiplayer FPS
+</footer>
+
+</div>
+
+<script>
+
+// =====================================
+// BASIC SETUP
+// =====================================
+
+const $ = id => document.getElementById(id);
+
+const COLORS = [
+  "#4bbaff",
+  "#ff6666",
+  "#54e6a0",
+  "#ffd166"
+];
+
+const canvas = $("gameMap");
+const ctx = canvas.getContext("2d");
+
+const TILE = 36;
+
+const BOARD_KEY = "arena_leaderboard_v2";
+const HISTORY_KEY = "arena_history_v2";
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[c]);
+}
+
+function safeColor(value, fallback) {
+  return /^#[0-9a-fA-F]{6}$/.test(value || "")
+    ? value : fallback;
+}
+
+function loadData(key) {
+  try {
+    const result = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveData(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.warn("Cannot save browser data:", error);
+  }
+}
+
+function matchId() {
+  return "match-" + Date.now();
+}
+
+// =====================================
+// CONNECTED MAZE GENERATOR
+// =====================================
+
+// This creates a maze where every open cell
+// is reachable from every other open cell.
+
+function createMaze() {
+  const width = 21;
+  const height = 13;
+
+  const maze = Array.from(
+    {length: height},
+    () => Array(width).fill(1)
+  );
+
+  const stack = [[1, 1]];
+  maze[1][1] = 0;
+
+  const directions = [
+    [2, 0],
+    [-2, 0],
+    [0, 2],
+    [0, -2]
+  ];
+
+  while (stack.length > 0) {
+    const [x, y] = stack[stack.length - 1];
+
+    const available = directions.filter(([dx, dy]) => {
+      const nx = x + dx;
+      const ny = y + dy;
+
+      return nx > 0 && nx < width - 1 &&
+             ny > 0 && ny < height - 1 &&
+             maze[ny][nx] === 1;
+    });
+
+    if (!available.length) {
+      stack.pop();
+      continue;
+    }
+
+    const [dx, dy] = available[
+      Math.floor(Math.random() * available.length)
+    ];
+
+    maze[y + dy / 2][x + dx / 2] = 0;
+    maze[y + dy][x + dx] = 0;
+
+    stack.push([x + dx, y + dy]);
+  }
+
+  // Add loops to create alternative routes.
+  // Removing walls cannot disconnect the maze.
+  for (let y = 2; y < height - 2; y++) {
+    for (let x = 2; x < width - 2; x++) {
+      if (maze[y][x] !== 1) continue;
+
+      const horizontal =
+        maze[y][x - 1] === 0 &&
+        maze[y][x + 1] === 0;
+
+      const vertical =
+        maze[y - 1][x] === 0 &&
+        maze[y + 1][x] === 0;
+
+      if ((horizontal || vertical) &&
+          Math.random() < 0.55) {
+        maze[y][x] = 0;
+      }
+    }
+  }
+
+  return maze;
+}
+
+function isOpen(x, y) {
+  return app.map[y]?.[x] === 0;
+}
+
+function canStand(x, y) {
+  const r = 0.18;
+
+  return [
+    [x - r, y - r],
+    [x + r, y - r],
+    [x - r, y + r],
+    [x + r, y + r]
+  ].every(([px, py]) =>
+    isOpen(Math.floor(px), Math.floor(py))
+  );
+}
+
+// =====================================
+// PLAYER DATA
+// =====================================
+
+function createPlayers() {
+  const spawns = [
+    [1.5, 1.5],
+    [19.5, 1.5],
+    [1.5, 11.5],
+    [19.5, 11.5]
+  ];
+
+  return spawns.map(([x, y], i) => ({
+    id: "p" + (i + 1),
+    number: i + 1,
+    name: "Player " + (i + 1),
+    color: COLORS[i],
+    x,
+    y,
+    spawnX: x,
+    spawnY: y,
+    angle: 0,
+    health: 100,
+    kills: 0,
+    deaths: 0,
+    alive: true,
+    cooldown: 0,
+    respawnAt: 0,
+    flash: 0
+  }));
+}
+
+let app = {
+  mode: "demo",
+  socket: null,
+  connected: false,
+  remoteLeaderboard: null,
+  map: createMaze(),
+  players: createPlayers(),
+  events: [],
+  shots: [],
+  clock: 0,
+
+  match: {
+    id: matchId(),
+    mode: "ffa",
+    status: "playing",
+    remaining: 120,
+    duration: 120,
+    round: 1
+  }
+};
+
+// =====================================
+// BFS PATHFINDING FOR DEMO PLAYERS
+// =====================================
+
+// Finds a valid route through the maze.
+// Used ONLY for simulated spectator data.
+
+function findPath(startX, startY, endX, endY) {
+  const sx = Math.floor(startX);
+  const sy = Math.floor(startY);
+  const tx = Math.floor(endX);
+  const ty = Math.floor(endY);
+
+  const key = (x, y) => x + "," + y;
+
+  const startKey = key(sx, sy);
+  const targetKey = key(tx, ty);
+
+  const queue = [[sx, sy]];
+  const visited = new Set([startKey]);
+  const previous = new Map();
+
+  const directions = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ];
+
+  for (let i = 0; i < queue.length; i++) {
+    const [x, y] = queue[i];
+
+    if (key(x, y) === targetKey) {
+      const path = [];
+      let current = targetKey;
+
+      while (current !== startKey) {
+        const [px, py] = current.split(",").map(Number);
+
+        path.unshift([px, py]);
+        current = previous.get(current);
+      }
+
+      return path;
+    }
+
+    for (const [dx, dy] of directions) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const nextKey = key(nx, ny);
+
+      if (!isOpen(nx, ny) || visited.has(nextKey)) {
+        continue;
+      }
+
+      visited.add(nextKey);
+      previous.set(nextKey, key(x, y));
+      queue.push([nx, ny]);
+    }
+  }
+
+  return null;
+}
+
+function findNearestOpponent(player) {
+  let best = null;
+  let bestDistance = Infinity;
+
+  for (const other of app.players) {
+    if (other.id === player.id || !other.alive) {
+      continue;
+    }
+
+    const path = findPath(
+      player.x, player.y,
+      other.x, other.y
+    );
+
+    if (!path) continue;
+
+    const distance = path.length;
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = {enemy: other, path};
+    }
+  }
+
+  return best;
+}
+
+// =====================================
+// LINE OF SIGHT
+// =====================================
+
+function hasLineOfSight(a, b) {
+  const distance = Math.hypot(
+    b.x - a.x,
+    b.y - a.y
+  );
+
+  const steps = Math.max(1, Math.ceil(distance * 25));
+
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t;
+
+    if (!isOpen(Math.floor(x), Math.floor(y))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// =====================================
+// DEMO MOVEMENT
+// =====================================
+
+function movePlayer(player, target, dt) {
+  if (!target) return;
+
+  let tx, ty;
+
+  if (target.path.length > 0) {
+    const [x, y] = target.path[0];
+    tx = x + 0.5;
+    ty = y + 0.5;
+  } else {
+    tx = target.enemy.x;
+    ty = target.enemy.y;
+  }
+
+  const dx = tx - player.x;
+  const dy = ty - player.y;
+  const distance = Math.hypot(dx, dy);
+
+  if (distance < 0.005) return;
+
+  const speed = 2.8;
+  const step = Math.min(speed * dt, distance);
+
+  const vx = dx / distance * step;
+  const vy = dy / distance * step;
+
+  // Move one axis at a time if necessary.
+  if (canStand(player.x + vx, player.y)) {
+    player.x += vx;
+  }
+
+  if (canStand(player.x, player.y + vy)) {
+    player.y += vy;
+  }
+
+  player.angle = Math.atan2(dy, dx);
+}
+
+// =====================================
+// DEMO SHOOTING AND DAMAGE
+// =====================================
+
+// Health now decreases ONLY from visible shots.
+
+function findVisibleTarget(player) {
+  const targets = app.players.filter(other => {
+    if (!other.alive || other.id === player.id) {
+      return false;
+    }
+
+    const distance = Math.hypot(
+      other.x - player.x,
+      other.y - player.y
+    );
+
+    return distance <= 3.5 &&
+           hasLineOfSight(player, other);
+  });
+
+  targets.sort((a, b) =>
+    Math.hypot(a.x - player.x, a.y - player.y) -
+    Math.hypot(b.x - player.x, b.y - player.y)
+  );
+
+  return targets[0] || null;
+}
+
+function shoot(player, target) {
+  player.cooldown = 0.85;
+
+  player.angle = Math.atan2(
+    target.y - player.y,
+    target.x - player.x
+  );
+
+  // Show the shot on the spectator map.
+  app.shots.push({
+    x1: player.x,
+    y1: player.y,
+    x2: target.x,
+    y2: target.y,
+    color: player.color,
+    life: 0.4
+  });
+
+  // Damage happens only after this shot.
+  const damage = 25 + Math.floor(Math.random() * 16);
+
+  target.health = Math.max(
+    0, target.health - damage
+  );
+
+  target.flash = 0.35;
+
+  if (target.health === 0) {
+    target.alive = false;
+    target.deaths++;
+    target.respawnAt = app.clock + 3;
+
+    player.kills++;
+
+    addEvent({
+      killer: player.name,
+      victim: target.name,
+      time: formatTime(
+        app.match.duration - app.match.remaining
+      )
+    });
+  }
+}
+
+// =====================================
+// MAP RENDERING
+// =====================================
+
+function drawMap() {
+  const rows = app.map.length;
+  const cols = app.map[0]?.length || 21;
+
+  if (canvas.width !== cols * TILE ||
+      canvas.height !== rows * TILE) {
+    canvas.width = cols * TILE;
+    canvas.height = rows * TILE;
+  }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Floor and walls
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const wall = app.map[y][x] === 1;
+
+      ctx.fillStyle = wall ? "#445773" : "#101a29";
+      ctx.fillRect(
+        x * TILE, y * TILE, TILE, TILE
+      );
+
+      ctx.strokeStyle = wall ? "#657c9b" : "#1d2b3e";
+      ctx.strokeRect(
+        x * TILE, y * TILE, TILE, TILE
+      );
+    }
+  }
+
+  // Laser / muzzle flash effects
+  app.shots.forEach(shot => {
+    ctx.beginPath();
+    ctx.moveTo(shot.x1 * TILE, shot.y1 * TILE);
+    ctx.lineTo(shot.x2 * TILE, shot.y2 * TILE);
+    ctx.strokeStyle = shot.color;
+    ctx.lineWidth = 4;
+    ctx.shadowColor = shot.color;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  });
+
+  // Players
+  app.players.forEach((player, i) => {
+    if (!player.alive) return;
+
+    const x = player.x * TILE;
+    const y = player.y * TILE;
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return;
+    }
+
+    // Glow
+    ctx.beginPath();
+    ctx.arc(x, y, 17, 0, Math.PI * 2);
+    ctx.fillStyle = player.color + "44";
+    ctx.fill();
+
+    // Facing direction
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(
+      x + Math.cos(player.angle) * 18,
+      y + Math.sin(player.angle) * 18
+    );
+    ctx.strokeStyle = player.color;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // Character marker
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = player.flash > 0
+      ? "#ffffff" : player.color;
+    ctx.fill();
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = "#08101a";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 11px Arial";
+    ctx.fillText(i + 1, x, y);
+
+    // Health bar
+    ctx.fillStyle = "#732b3c";
+    ctx.fillRect(x - 16, y - 24, 32, 5);
+
+    ctx.fillStyle = "#54e6a0";
+    ctx.fillRect(
+      x - 16,
+      y - 24,
+      32 * player.health / 100,
+      5
+    );
+  });
+}
+
+// =====================================
+// DISPLAY HELPERS
+// =====================================
+
+function formatTime(seconds) {
+  const t = Math.max(0, Math.ceil(seconds));
+
+  return String(Math.floor(t / 60)).padStart(2, "0") +
+    ":" + String(t % 60).padStart(2, "0");
+}
+
+function modeName(mode) {
+  return ({
+    ffa: "FFA",
+    tdm: "2V2 TDM",
+    koth: "KING OF THE HILL"
+  })[mode] || String(mode).toUpperCase();
+}
+
+function getLeader() {
+  if (!app.players.length) return null;
+
+  return [...app.players].sort((a, b) =>
+    b.kills - a.kills || a.deaths - b.deaths
+  )[0];
+}
+
+function renderScoreboard() {
+  const sorted = [...app.players].sort((a, b) =>
+    b.kills - a.kills || a.deaths - b.deaths
+  );
+
+  $("scoreboard").innerHTML = sorted.map(p => `
+    <div class="score-row">
+      <div>
+        <div class="player-name" style="color:${p.color}">
+          ● ${escapeHTML(p.name)}
+          ${p.alive ? "" : " ☠"}
+        </div>
+        <div class="health-track">
+          <div class="health-fill"
+            style="width:${p.health}%">
+          </div>
+        </div>
+        <div class="small">${p.health} HP</div>
+      </div>
+      <div class="stat">${p.kills}</div>
+      <div class="stat">${p.deaths}</div>
+    </div>
+  `).join("");
+
+  $("mapLegend").innerHTML = app.players.map(p => `
+    <span style="color:${p.color}">
+      ● ${escapeHTML(p.name)}
+    </span>
+  `).join("");
+}
+
+function addEvent(event) {
+  const id = String(event.id ??
+    `${event.killer}-${event.victim}-${event.time}`);
+
+  if (app.events.some(e => e.id === id)) return;
+
+  app.events.unshift({
+    id,
+    killer: String(event.killer || "Unknown"),
+    victim: String(event.victim || "Unknown"),
+    text: String(event.text || ""),
+    time: String(event.time ||
+      formatTime(app.match.duration - app.match.remaining))
+  });
+
+  app.events = app.events.slice(0, 30);
+}
+
+function renderFeed() {
+  $("killFeed").innerHTML = app.events.length
+    ? app.events.slice(0, 6).map(e => `
+      <div class="feed-item">
+        ${e.text
+          ? escapeHTML(e.text)
+          : `<strong>${escapeHTML(e.killer)}</strong>
+             eliminated ${escapeHTML(e.victim)}`}
+        <div class="small">${escapeHTML(e.time)}</div>
+      </div>
+    `).join("")
+    : '<p class="small">Waiting for eliminations...</p>';
+}
+
+function renderMatch() {
+  $("timer").textContent =
+    formatTime(app.match.remaining);
+
+  $("modeDisplay").textContent =
+    modeName(app.match.mode);
+
+  $("playersDisplay").textContent =
+    app.players.length + " / 4";
+
+  $("statusDisplay").textContent =
+    app.match.status.toUpperCase();
+
+  $("roundDisplay").textContent =
+    app.match.round;
+
+  $("matchIdDisplay").textContent =
+    app.match.id;
+
+  const leader = getLeader();
+
+  $("leaderDisplay").textContent =
+    leader ? leader.name : "-";
+
+  $("matchMessage").textContent =
+    app.match.status === "finished"
+      ? "Match completed. Final results recorded."
+      : app.match.status === "paused"
+      ? "Match paused."
+      : "Match in progress.";
+
+  $("pauseBtn").textContent =
+    app.match.status === "paused"
+      ? "▶ Resume Match"
+      : "⏸ Pause Match";
+
+  $("finishBtn").disabled =
+    app.mode !== "demo" ||
+    app.match.status === "finished";
+
+  $("gameMode").value =
+    ["ffa", "tdm", "koth"].includes(app.match.mode)
+      ? app.match.mode : "ffa";
+
+  const indicator = $("connectionStatus");
+
+  if (app.mode === "demo") {
+    indicator.textContent = "● DEMO MODE";
+    indicator.style.color = "#ffc37b";
+  } else if (app.connected) {
+    indicator.textContent = "● SERVER CONNECTED";
+    indicator.style.color = "#54e6a0";
+  } else {
+    indicator.textContent = "● DISCONNECTED";
+    indicator.style.color = "#ff6666";
+  }
+}
+
+function render() {
+  drawMap();
+  renderScoreboard();
+  renderFeed();
+  renderMatch();
+}
+
+// =====================================
+// MAIN DEMO LOOP
+// =====================================
+
+function demoTick() {
+  if (app.mode !== "demo") return;
+  if (app.match.status !== "playing") return;
+
+  const dt = 0.1;
+
+  app.clock += dt;
+  app.match.remaining =
+    Math.max(0, app.match.remaining - dt);
+
+  // Respawn and cooldown handling
+  app.players.forEach(player => {
+    player.cooldown =
+      Math.max(0, player.cooldown - dt);
+
+    player.flash =
+      Math.max(0, player.flash - dt);
+
+    if (!player.alive &&
+        app.clock >= player.respawnAt) {
+      player.alive = true;
+      player.health = 100;
+      player.x = player.spawnX;
+      player.y = player.spawnY;
+      player.cooldown = 0.6;
+    }
+  });
+
+  // Pursue opponents through valid maze routes
+  app.players.forEach(player => {
+    if (!player.alive) return;
+
+    const target = findNearestOpponent(player);
+
+    if (!target) return;
+
+    const visible = findVisibleTarget(player);
+
+    if (visible) {
+      player.angle = Math.atan2(
+        visible.y - player.y,
+        visible.x - player.x
+      );
+    } else {
+      movePlayer(player, target, dt);
+    }
+  });
+
+  // Shooting: only targets in range and visible
+  app.players.forEach(player => {
+    if (!player.alive || player.cooldown > 0) return;
+
+    const target = findVisibleTarget(player);
+
+    if (target) shoot(player, target);
+  });
+
+  // Remove expired shot effects
+  app.shots.forEach(s => s.life -= dt);
+  app.shots = app.shots.filter(s => s.life > 0);
+
+  if (app.match.remaining <= 0) {
+    finishMatch();
+  }
+
+  render();
+}
+
+// =====================================
+// LEADERBOARD AND MATCH HISTORY
+// =====================================
+
+function getLeaderboard() {
+  return loadData(BOARD_KEY);
+}
+
+function getHistory() {
+  return loadData(HISTORY_KEY);
+}
+
+function saveMatchResult() {
+  const history = getHistory();
+
+  if (history.some(m => m.id === app.match.id)) {
+    return;
+  }
+
+  const leader = getLeader();
+  const winner = leader ? leader.name : "None";
+
+  const result = {
+    id: app.match.id,
+    date: new Date().toLocaleString(),
+    mode: app.match.mode,
+    winner,
+    players: app.players.map(p => ({
+      name: p.name,
+      kills: p.kills,
+      deaths: p.deaths
+    }))
+  };
+
+  history.unshift(result);
+  saveData(HISTORY_KEY, history.slice(0, 30));
+
+  const board = getLeaderboard();
+
+  result.players.forEach(p => {
+    let entry = board.find(e => e.name === p.name);
+
+    if (!entry) {
+      entry = {
+        name: p.name,
+        wins: 0,
+        matches: 0,
+        kills: 0,
+        deaths: 0
+      };
+      board.push(entry);
+    }
+
+    entry.matches++;
+    entry.kills += p.kills;
+    entry.deaths += p.deaths;
+
+    if (p.name === winner) entry.wins++;
+  });
+
+  saveData(BOARD_KEY, board);
+}
+
+function renderLeaderboard() {
+  const board = Array.isArray(app.remoteLeaderboard)
+    ? app.remoteLeaderboard
+    : getLeaderboard();
+
+  $("leaderboardNote").textContent =
+    Array.isArray(app.remoteLeaderboard)
+      ? "Shared leaderboard received from the server."
+      : "Leaderboard saved locally in this browser.";
+
+  const sorted = [...board].sort((a, b) =>
+    b.wins - a.wins || b.kills - a.kills
+  );
+
+  $("leaderboardBody").innerHTML = sorted.length
+    ? sorted.map((p, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${escapeHTML(p.name)}</td>
+        <td>${Number(p.wins) || 0}</td>
+        <td>${Number(p.matches) || 0}</td>
+        <td>${Number(p.kills) || 0}</td>
+        <td>${Number(p.deaths) || 0}</td>
+        <td>${(
+          (Number(p.kills) || 0) /
+          Math.max(1, Number(p.deaths) || 0)
+        ).toFixed(2)}</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="7">No matches completed yet.</td></tr>';
+}
+
+function renderHistory() {
+  const history = getHistory();
+
+  $("matchHistory").innerHTML = history.length
+    ? history.slice(0, 6).map(m => `
+      <div class="feed-item">
+        <strong>${escapeHTML(m.winner)}</strong>
+        won a ${escapeHTML(modeName(m.mode))} match.
+        <div class="small">${escapeHTML(m.date)}</div>
+      </div>
+    `).join("")
+    : '<p class="small">No matches completed yet.</p>';
+}
+
+function finishMatch() {
+  if (app.match.status === "finished") return;
+
+  app.match.remaining = 0;
+  app.match.status = "finished";
+
+  saveMatchResult();
+  renderLeaderboard();
+  renderHistory();
+  render();
+}
+
+// =====================================
+// REFEREE CONTROLS
+// =====================================
+
+function resetDemo() {
+  const duration = Number($("matchDuration").value);
+  const mode = $("gameMode").value;
+
+  app.map = createMaze();
+  app.players = createPlayers();
+  app.events = [];
+  app.shots = [];
+  app.clock = 0;
+
+  app.match = {
+    id: matchId(),
+    mode,
+    status: "playing",
+    remaining: duration,
+    duration,
+    round: 1
+  };
+
+  $("commentary").textContent =
+    "Awaiting match completion.";
+
+  $("aiStatus").textContent = "";
+  $("refereeNotice").textContent = "";
+
+  render();
+}
+
+function startDemo() {
+  if (app.socket) {
+    app.socket.close();
+    app.socket = null;
+  }
+
+  app.mode = "demo";
+  app.connected = false;
+  app.remoteLeaderboard = null;
+
+  resetDemo();
+
+  $("connectionNote").textContent =
+    "Demo mode active. Game data is simulated.";
+
+  renderLeaderboard();
+}
+
+function refereeCommand(action, settings = {}) {
+  if (app.mode === "demo") {
+    if (action === "pause" &&
+        app.match.status === "playing") {
+      app.match.status = "paused";
+    }
+
+    if (action === "resume" &&
+        app.match.status === "paused") {
+      app.match.status = "playing";
+    }
+
+    if (action === "restart" ||
+        action === "settings") {
+      resetDemo();
+    }
+
+    render();
+    return;
+  }
+
+  if (!app.socket ||
+      app.socket.readyState !== WebSocket.OPEN) {
+    $("refereeNotice").textContent =
+      "Server is not connected.";
+    return;
+  }
+
+  const token = $("hostToken").value.trim();
+
+  if (!token) {
+    $("refereeNotice").textContent =
+      "Enter a host token for live referee commands.";
+    return;
+  }
+
+  app.socket.send(JSON.stringify({
+    type: "referee_command",
+    action,
+    host_token: token,
+    settings
+  }));
+
+  $("refereeNotice").textContent =
+    "Command sent. Waiting for server confirmation.";
+}
+
+$("pauseBtn").onclick = () => {
+  refereeCommand(
+    app.match.status === "paused" ? "resume" : "pause"
+  );
+};
+
+$("restartBtn").onclick = () => {
+  refereeCommand("restart");
+};
+
+$("finishBtn").onclick = () => {
+  if (app.mode === "demo") finishMatch();
+};
+
+$("applySettingsBtn").onclick = () => {
+  refereeCommand("settings", {
+    mode: $("gameMode").value,
+    duration_seconds: Number($("matchDuration").value)
+  });
+
+  if (app.mode === "demo") {
+    $("refereeNotice").textContent =
+      "Demo settings applied. New match started.";
+  }
+};
+
+$("demoBtn").onclick = startDemo;
+
+// =====================================
+// LIVE PYTHON SERVER CONNECTION
+// =====================================
+
+function normaliseStatus(status) {
+  if (status === "in_progress" || status === "active") {
+    return "playing";
+  }
+
+  if (status === "complete" || status === "ended") {
+    return "finished";
+  }
+
+  return ["playing", "paused", "finished", "lobby"]
+    .includes(status) ? status : "playing";
+}
+
+function applyServerState(data) {
+  const source = data.state || data;
+  const match = source.match || source;
+
+  const previousId = app.match.id;
+  const previousStatus = app.match.status;
+
+  const nextId = String(
+    match.id ?? match.match_id ?? previousId
+  );
+
+  const duration = Number(
+    match.duration_seconds ??
+    match.duration ??
+    app.match.duration
+  );
+
+  const remaining = Number(
+    match.remaining_seconds ??
+    match.time_left ??
+    match.remaining ??
+    app.match.remaining
+  );
+
+  // Reset events when a new match begins
+  if (nextId !== previousId) {
+    app.events = [];
+    app.shots = [];
+  }
+
+  app.match = {
+    id: nextId,
+    mode: match.mode ?? app.match.mode,
+    status: normaliseStatus(
+      match.status ?? app.match.status
+    ),
+    duration: Number.isFinite(duration)
+      ? duration : 120,
+    remaining: Number.isFinite(remaining)
+      ? remaining : 0,
+    round: Number(match.round ?? 1)
+  };
+
+  if (Array.isArray(source.map) &&
+      source.map.length &&
+      Array.isArray(source.map[0])) {
+    app.map = source.map;
+  }
+
+  if (Array.isArray(source.players)) {
+    app.players = source.players.map((p, i) => {
+      const old = app.players.find(
+        item => String(item.id) === String(p.id)
+      );
+
+      return {
+        id: String(p.id ?? i + 1),
+        name: String(p.name ?? "Player " + (i + 1)),
+        color: safeColor(
+          p.color,
+          old?.color || COLORS[i % COLORS.length]
+        ),
+        x: Number(p.position?.x ?? p.x ?? 1.5),
+        y: Number(p.position?.y ?? p.y ?? 1.5),
+        angle: Number(p.angle ?? 0),
+        health: Math.max(0, Math.min(
+          100, Number(p.health ?? p.hp ?? 100)
+        )),
+        kills: Number(p.kills ?? 0),
+        deaths: Number(p.deaths ?? 0),
+        alive: p.alive !== false,
+        flash: 0
+      };
+    });
+  }
+
+  if (Array.isArray(source.events)) {
+    source.events.forEach(addEvent);
+  }
+
+  if (app.match.status === "finished" &&
+      (previousStatus !== "finished" ||
+       nextId !== previousId)) {
+    saveMatchResult();
+    renderLeaderboard();
+    renderHistory();
+  }
+
+  render();
+}
+
+function connectServer() {
+  const url = $("serverUrl").value.trim();
+
+  if (!/^wss?:\/\/.+/i.test(url)) {
+    $("connectionNote").textContent =
+      "Enter a valid ws:// or wss:// address.";
+    return;
+  }
+
+  if (app.socket) app.socket.close();
+
+  app.mode = "live";
+  app.connected = false;
+  app.remoteLeaderboard = null;
+  app.events = [];
+
+  $("connectionNote").textContent =
+    "Connecting to Python server...";
+
+  let ws;
+
+  try {
+    ws = new WebSocket(url);
+  } catch (error) {
+    $("connectionNote").textContent =
+      "Connection error: " + error.message;
+    render();
+    return;
+  }
+
+  app.socket = ws;
+
+  ws.onopen = () => {
+    if (app.socket !== ws) return;
+
+    app.connected = true;
+    $("connectionNote").textContent =
+      "Connected. Waiting for live updates.";
+    render();
+  };
+
+  ws.onmessage = event => {
+    if (app.socket !== ws) return;
+
+    try {
+      const msg = JSON.parse(event.data);
+
+      if (msg.type === "state" ||
+          msg.type === "snapshot") {
+        applyServerState(msg);
+      }
+
+      if (msg.type === "event") {
+        addEvent(msg.event || msg);
+        renderFeed();
+      }
+
+      if (msg.type === "leaderboard") {
+        app.remoteLeaderboard =
+          msg.entries || msg.leaderboard || [];
+        renderLeaderboard();
+      }
+
+      if (msg.type === "commentary") {
+        $("commentary").textContent =
+          String(msg.commentary || msg.text || "");
+        $("aiStatus").textContent =
+          "Commentary received from server.";
+      }
+
+      if (msg.type === "referee_response") {
+        $("refereeNotice").textContent =
+          String(msg.message ||
+            (msg.ok
+              ? "Command accepted."
+              : "Command rejected."));
+      }
+    } catch (error) {
+      console.error("Invalid server message:", error);
+    }
+  };
+
+  ws.onerror = () => {
+    if (app.socket !== ws) return;
+
+    $("connectionNote").textContent =
+      "Connection error. Check server address.";
+  };
+
+  ws.onclose = () => {
+    if (app.socket !== ws) return;
+
+    app.connected = false;
+
+    $("connectionNote").textContent =
+      "Disconnected from Python server.";
+
+    render();
+  };
+
+  render();
+}
+
+$("connectBtn").onclick = connectServer;
+
+// =====================================
+// MATCH COMMENTARY
+// =====================================
+
+function matchPayload() {
+  return {
+    match_id: app.match.id,
+    mode: app.match.mode,
+    players: app.players.map(p => ({
+      name: p.name,
+      kills: p.kills,
+      deaths: p.deaths
+    })),
+    events: app.events.map(e => ({
+      killer: e.killer,
+      victim: e.victim,
+      time: e.time
+    }))
+  };
+}
+
+function demoSummary() {
+  const sorted = [...app.players].sort((a, b) =>
+    b.kills - a.kills || a.deaths - b.deaths
+  );
+
+  const winner = sorted[0];
+
+  if (!winner) return "No match results available.";
+
+  const totalKills = app.players.reduce(
+    (sum, p) => sum + p.kills, 0
+  );
+
+  const topEvent = app.events[0];
+
+  return `DEMO MATCH REPORT (STATISTICS-BASED, NOT AI)
+
+🏆 MATCH RESULT
+
+${winner.name} finished first with ${winner.kills} eliminations and ${winner.deaths} deaths.
+
+🎯 COMBAT SUMMARY
+
+The match recorded ${totalKills} eliminations.
+
+${topEvent
+  ? `The final recorded elimination was ${topEvent.killer} eliminating ${topEvent.victim}.`
+  : "No eliminations were recorded."}
+
+📊 FINAL STANDINGS
+
+${sorted.map((p, i) =>
+  `${i + 1}. ${p.name} — ${p.kills} kills, ${p.deaths} deaths`
+).join("\n")}
+
+This demonstration report uses match statistics. Genuine AI-written commentary requires the Python server's AI endpoint.`;
+}
+
+function getApiBase() {
+  const url = new URL($("serverUrl").value.trim());
+
+  url.protocol = url.protocol === "wss:"
+    ? "https:" : "http:";
+
+  return url.origin;
+}
+
+async function generateCommentary() {
+  if (app.match.status !== "finished") {
+    $("aiStatus").textContent =
+      "Finish the match before generating commentary.";
+    return;
+  }
+
+  if (app.mode === "demo") {
+    $("commentary").textContent = demoSummary();
+    $("aiStatus").textContent =
+      "Demo report generated. No AI service was called.";
+    return;
+  }
+
+  $("generateCommentaryBtn").disabled = true;
+
+  $("aiStatus").textContent =
+    "Requesting AI commentary from server...";
+
+  try {
+    const headers = {
+      "Content-Type": "application/json"
+    };
+
+    const token = $("hostToken").value.trim();
+
+    if (token) headers["X-Host-Token"] = token;
+
+    const response = await fetch(
+      getApiBase() + "/api/commentary",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(matchPayload())
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+
+    const result = await response.json();
+
+    const text =
+      result.commentary || result.summary || result.text;
+
+    if (typeof text !== "string" || !text.trim()) {
+      throw new Error("Empty commentary response.");
+    }
+
+    $("commentary").textContent = text;
+    $("aiStatus").textContent =
+      "AI commentary received successfully.";
+
+  } catch (error) {
+    $("aiStatus").textContent =
+      "AI server unavailable: " + error.message;
+
+    $("commentary").textContent =
+      "The Python server must provide POST /api/commentary " +
+      "for genuine AI-generated match reports.";
+
+  } finally {
+    $("generateCommentaryBtn").disabled = false;
+  }
+}
+
+$("generateCommentaryBtn").onclick =
+  generateCommentary;
+
+// =====================================
+// INITIALISE
+// =====================================
+
+const defaultHost =
+  location.host || "localhost:8000";
+
+$("serverUrl").value =
+  (location.protocol === "https:" ? "wss://" : "ws://") +
+  defaultHost + "/ws/spectator";
+
+renderLeaderboard();
+renderHistory();
+render();
+
+setInterval(demoTick, 100);
+
+</script>
+
+</body>
+</html>
