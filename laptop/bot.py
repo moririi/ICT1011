@@ -304,50 +304,50 @@ async def heatmap_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(photo=image, caption=f"🔥 Heatmap – Match #{match['id']}")
 
 
-    def render_replay_gif(match: dict) -> io.BytesIO:
-        """Loads the match's positions file and draws its replay GIF into memory."""
-        with open(DATA_DIR / match["positions_file"], "r", encoding="utf-8") as f:
-            positions = json.load(f)
-        gif = io.BytesIO()
-        make_replay(match, positions, gif)
-        gif.seek(0)
-        return gif
+def render_replay_gif(match: dict) -> io.BytesIO:
+    """Loads the match's positions file and draws its replay GIF into memory."""
+    with open(DATA_DIR / match["positions_file"], "r", encoding="utf-8") as f:
+        positions = json.load(f)
+    gif = io.BytesIO()
+    make_replay(match, positions, gif)
+    gif.seek(0)
+    return gif
 
 
-    async def replay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        data = read_data_safely()
-        matches = [m for m in data.get("matches", []) if m.get("positions_file")]
+async def replay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = read_data_safely()
+    matches = [m for m in data.get("matches", []) if m.get("positions_file")]
 
-        if not matches:
-            await update.message.reply_text("No matches with position data yet.")
-            return
+    if not matches:
+        await update.message.reply_text("No matches with position data yet.")
+        return
 
-        if context.args:
-            try:
-                match_id = int(context.args[0])
-            except ValueError:
-                await update.message.reply_text("Usage: `/replay [match_id]`", parse_mode=ParseMode.MARKDOWN)
-                return
-            match = next((m for m in matches if m.get("id") == match_id), None)
-            if match is None:
-                await update.message.reply_text(f"No position data for match #{match_id}.")
-                return
-        else:
-            match = matches[-1]
-
+    if context.args:
         try:
-            # Drawing every frame takes a few seconds, so run it off the event loop
-            gif = await asyncio.to_thread(render_replay_gif, match)
-        except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Could not draw replay for match #{match.get('id')}: {e}")
-            await update.message.reply_text(f"Could not read the position data for match #{match.get('id')}.")
+            match_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Usage: `/replay [match_id]`", parse_mode=ParseMode.MARKDOWN)
             return
+        match = next((m for m in matches if m.get("id") == match_id), None)
+        if match is None:
+            await update.message.reply_text(f"No position data for match #{match_id}.")
+            return
+    else:
+        match = matches[-1]
 
-        await update.message.reply_animation(
-            animation=gif,
-            filename=f"replay_match_{match['id']}.gif",
-            caption=f"🎬 Replay – Match #{match['id']}",
-        )
+    try:
+        # Drawing every frame takes a few seconds, so run it off the event loop
+        gif = await asyncio.to_thread(render_replay_gif, match)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"Could not draw replay for match #{match.get('id')}: {e}")
+        await update.message.reply_text(f"Could not read the position data for match #{match.get('id')}.")
+        return
+
+    await update.message.reply_animation(
+        animation=gif,
+        filename=f"replay_match_{match['id']}.gif",
+        caption=f"🎬 Replay – Match #{match['id']}",
+    )
 
 
 # ==========================================
