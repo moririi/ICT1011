@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import os
+import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -19,6 +20,7 @@ from telegram.ext import (
 
 from heatmap import draw as draw_heatmap
 from replay import make_replay
+import database
 
 # Load environment variables from .env
 load_dotenv()
@@ -146,6 +148,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚔️ `/lastmatch` - Details of the most recent finished match\n"
         "🔥 `/heatmap [match_id]` - Where each player spent their time (default: latest match)\n"
         "🎬 `/replay [match_id]` - Animated top-down replay of a match (default: latest match)\n"
+        "📈 `/top [wins|accuracy|hits|rounds]` - Top players from the match database\n"
         "ℹ️ `/help` - Show this list"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
@@ -350,6 +353,52 @@ async def replay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+TOP_TITLES = {"wins": "Wins", "accuracy": "Accuracy", "hits": "Hits", "rounds": "Rounds won"}
+
+
+def load_top(stat: str):
+    """Syncs matches.json into arena.db, then reads the top players and the fastest round."""
+    database.import_all(DATA_DIR)
+    return database.top_players(DATA_DIR, stat), database.fastest_round(DATA_DIR)
+
+
+async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stat = context.args[0].lower() if context.args else "wins"
+    if stat not in TOP_TITLES:
+        await update.message.reply_text(
+            "Usage: `/top [wins|accuracy|hits|rounds]`", parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    try:
+        players, fastest = await asyncio.to_thread(load_top, stat)
+    except (OSError, json.JSONDecodeError, sqlite3.Error) as e:
+        logger.warning(f"Could not update the match database: {e}")
+        await update.message.reply_text("Could not read the match data right now.")
+        return
+
+    if not players:
+        await update.message.reply_text("No finished matches recorded yet.")
+        return
+
+    lines = [f"📈 *TOP PLAYERS – {TOP_TITLES[stat].upper()}*\n"]
+    medals = ["🥇", "🥈", "🥉"]
+    for idx, p in enumerate(players, start=1):
+        rank_icon = medals[idx - 1] if idx <= 3 else f"`{idx}.`"
+        acc = format_accuracy(p["hits"], p["shots"])
+        lines.append(
+            f"{rank_icon} *{p['name']}* — {p['wins']}W in {p['matches']} | "
+            f"Hits {p['hits']}/{p['shots']} (`{acc}`) | Rounds {p['rounds_won']}"
+        )
+    if fastest:
+        lines.append(
+            f"\n⚡ Fastest round: *{fastest['duration_s']:.1f} s* by {fastest['name']} "
+            f"(match #{fastest['match_id']}, R{fastest['round']})"
+        )
+
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)   
+
+
 # ==========================================
 # BACKGROUND AUTO-REPORT JOB
 # ==========================================
@@ -421,6 +470,7 @@ def main():
     app.add_handler(CommandHandler("lastmatch", lastmatch_command))
     app.add_handler(CommandHandler("heatmap", heatmap_command))
     app.add_handler(CommandHandler("replay", replay_command))
+    app.add_handler(CommandHandler("top", top_command))
 
     # Set up background polling job (every 3.0 seconds)
     if TELEGRAM_CHAT_ID:

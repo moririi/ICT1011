@@ -11,3 +11,4 @@ laptop/events_*.log
 *.tmp
 laptop/.env
 laptop/my_test/
+*.db
