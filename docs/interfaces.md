@@ -44,7 +44,7 @@ Watch (C++) --BLE--> Laptop server (Python) --WebSocket--> Web app on phones / P
 | 5–6 | y | i16 | position × 256 |
 | 7 | angle | u8 | facing, 0–255 = full circle |
 | 8 | hitsLanded | u8 | hits I landed on you this round |
-| 9 | flags | u8 | bit0 = fired in the last 100 ms |
+| 9 | flags | u8 | bit0 = fired in the last 100 ms, bit1 = this player has the game paused |
 | 10 | shots | u8 | shots I fired this round (since duel_v3) |
 | 11 | rounds | u8 | rounds to win; Player B uses the host's value (since `firmware/tinyboy`) |
 
