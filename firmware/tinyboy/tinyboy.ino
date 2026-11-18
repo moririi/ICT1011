@@ -8,12 +8,13 @@
  *   - turn-taking link (B sends, A answers, ~10/s), shooter decides hits
  *   - the host's "rounds to win" setting is used by both watches
  *   - match events over USB (EVT,... lines) for laptop/bridge.py  (docs/interfaces.md 3.1b)
- *   - hold any button for 1 s on the waiting / round-over screen = back to the menu
+ *   - BACK button (top-left): pause during a round (both watches pause), leave the
+ *     waiting / between-rounds screen; YOU WIN / GAME OVER screen, then back to the menu
  * Singleplayer = the raycaster_v4 bot (patrols, spots you, turns, shoots back).
  *
  * Controls: twin-stick - LEFT stick (Wireling port 3) walk/strafe, RIGHT stick (port 0) turn.
- *           Buttons also work: left = walk, right = turn. Menu: left stick / left buttons = up/down,
- *           right stick / right buttons = select.
+ *           Buttons don't move you. Top-left = BACK / pause. Menu: left stick = up/down,
+ *           right stick = select (buttons: bottom-left = down, right buttons = select).
  * Safety:   watchdog restarts a frozen watch within ~2 s ("RECOVERED" on the menu).
  *
  * Raycasting / sprite projection adapted from Lode Vandevenne's tutorials
@@ -78,7 +79,8 @@ struct __attribute__((packed)) DuelPacket {
   uint8_t shots;       // shots I've fired this round (for accuracy stats)
   uint8_t rounds;      // rounds to win (Player B uses the host's setting)
 };
-#define FLAG_FIRED 0x01
+#define FLAG_FIRED  0x01
+#define FLAG_PAUSED 0x02   // this player has the game paused
 const unsigned long SEND_INTERVAL_MS = 100;  // 10 packets per second (was 20 - less traffic, fewer clashes)
 
 // =====================================================================
@@ -164,15 +166,35 @@ unsigned long oppFireFlashUntil = 0;
 bool  oppHasPosition = false;
 
 // Rounds
-enum GameState { STATE_MENU, STATE_WAITING, STATE_PLAYING, STATE_ROUND_OVER };
+enum GameState { STATE_MENU, STATE_WAITING, STATE_PLAYING, STATE_ROUND_OVER, STATE_PAUSED, STATE_MATCH_OVER };
 GameState state = STATE_MENU;
 bool singleplayer = false;   // true = vs bot (no Bluetooth), false = multiplayer duel
 bool netStarted = false;     // Bluetooth is only switched on when MULTIPLAYER is chosen
-bool waitRelease = false;    // ignore controls until the menu "select" button is let go
 unsigned long stateStart = 0;
 uint8_t myRound = 0;
 int roundsMe = 0, roundsOpp = 0;
 bool matchOver = false;
+
+// The 4 watch buttons are no longer used to move (the joysticks do that).
+// One of them is the BACK button: pause in a game, back in the menus, leave the waiting screen.
+#define BACK_BUTTON TSButtonUpperLeft   // change this if another button suits the case better
+uint8_t prevGameButtons = 0;
+bool backPressed() {                    // true only on the frame the BACK button goes down
+  uint8_t b = display.getButtons();
+  bool down = (b & BACK_BUTTON) && !(prevGameButtons & BACK_BUTTON);
+  prevGameButtons = b;
+  return down;
+}
+
+// Pause
+bool pausedBySelf = false;    // true = I paused, false = the other player paused
+bool oppPaused = false;       // the other watch's latest packet says it is paused
+unsigned long pauseStart = 0;
+int pauseSel = 0;             // 0 = RESUME, 1 = QUIT TO MENU
+const unsigned long MATCH_OVER_MIN_MS = 2000;   // result screen ignores input for this long
+const unsigned long MATCH_OVER_AUTO_MS = 15000; // then goes back to the menu by itself
+bool matchOverPromptShown = false;
+void showMatchOver();   // defined further down
 
 // Effects / timers
 unsigned long lastShotTime = 0;
@@ -430,6 +452,7 @@ void onNetReceive(uint8_t *data, uint8_t len) {
   if (p.round == myRound) { oppHitsLanded = p.hitsLanded; oppShots = p.shots; }  // only this round's counts
   if (role == ROLE_B && (p.rounds == 1 || p.rounds == 3 || p.rounds == 5)) roundsToWin = p.rounds;  // host decides
   if (p.flags & FLAG_FIRED) oppFireFlashUntil = millis() + MUZZLE_FLASH_MS;
+  oppPaused = (p.flags & FLAG_PAUSED) != 0;
   oppLastPacket = millis();
   if (role == ROLE_A) replyDue = true;  // A: answer this packet
   else                gotReply = true;  // B: our turn to send again
@@ -445,6 +468,7 @@ void sendMyState(unsigned long now) {
   p.angle = (uint8_t)((atan2f(dirY, dirX) + PI) / (2 * PI) * 255);
   p.hitsLanded = myHitsLanded;
   p.flags = (now - lastShotTime < 100) ? FLAG_FIRED : 0;
+  if (state == STATE_PAUSED && pausedBySelf) p.flags |= FLAG_PAUSED;
   p.shots = myShots;
   p.rounds = roundsToWin;
   netSend((uint8_t *)&p, sizeof(p));
@@ -676,15 +700,15 @@ void endRound(int result, unsigned long now) {  // 1 = I won, -1 = I lost, 0 = d
   // myRound stays the same during the round-over screen, so we keep re-sending the
   // final hit count for this round - the other watch gets it even if a packet is lost
   playRoundOverSound(result > 0);
-  state = STATE_ROUND_OVER;
   stateStart = now;
+  if (matchOver) { showMatchOver(); return; }   // YOU WIN / GAME OVER, then the main menu
+  state = STATE_ROUND_OVER;
 
   char score[24];
   sprintf(score, "You %d - %d %s", roundsMe, roundsOpp, singleplayer ? "Bot" : "Them");
   const char *title = result > 0 ? "ROUND WON" : (result < 0 ? "ROUND LOST" : "DRAW");
   uint8_t colour = result > 0 ? TS_8b_Green : (result < 0 ? TS_8b_Red : TS_8b_Yellow);
-  const char *bottom = matchOver ? (roundsMe >= roundsToWin ? "MATCH WON!" : "MATCH LOST") : "Next round...";
-  drawTextScreen(title, colour, score, bottom);
+  drawTextScreen(title, colour, score, "Next round...");
 }
 
 void enterWaiting() {
@@ -869,8 +893,11 @@ extern "C" void WDT_Handler(void) {
   SerialUSB.print(": ");
   SerialUSB.println(stageName(stage));
 }
+
+// Frame timing (declared here so the menu code can reset it too)
 unsigned long lastFrame = 0, lastFpsTime = 0;
 int frames = 0;
+
 // =====================================================================
 //  Singleplayer bot (from raycaster_v4)
 //  The bot drives the same "opponent" the network fills in multiplayer: oppX/oppY for drawing,
@@ -978,8 +1005,8 @@ void updateBot(float dt, unsigned long now) {
 
 // =====================================================================
 //  Main menu (Lee Yu Xuan) - adapted: joystick navigation, starts the real game modes
-//  Controls: left stick up/down or left buttons = move highlight,
-//            right stick (any direction) or right buttons = select
+//  Controls: left stick up/down = move highlight, right stick (any direction) = select
+//            buttons: BACK (top-left) = back, bottom-left = down, right buttons = select
 // =====================================================================
 enum MenuScreen { SCR_MAIN, SCR_MULTI, SCR_SETTINGS, SCR_HOWTO };
 int screen = SCR_MAIN;
@@ -993,6 +1020,7 @@ const char *MP_ITEMS[]   = { "HOST (A)", "JOIN (B)", "BACK" };
 #define MENU_UP     0x01
 #define MENU_DOWN   0x02
 #define MENU_SELECT 0x04
+#define MENU_BACK   0x08
 
 // Only inputs that were *just* pressed this frame (holding doesn't repeat)
 uint8_t menuInput() {
@@ -1013,7 +1041,8 @@ uint8_t menuInput() {
   prevStickDir = dir;
 
   uint8_t in = newDir;
-  if (pressed & TSButtonUpperLeft) in |= MENU_UP;
+  // Buttons: BACK = back, lower-left = move down (wraps round), right buttons = select
+  if (pressed & BACK_BUTTON) in |= MENU_BACK;
   if (pressed & TSButtonLowerLeft) in |= MENU_DOWN;
   if (pressed & (TSButtonUpperRight | TSButtonLowerRight)) in |= MENU_SELECT;
   return in;
@@ -1079,11 +1108,12 @@ void drawScreen() {
 
     case SCR_HOWTO:
       printCentered("HOW TO PLAY", 1, TS_8b_Yellow);
-      printLeft("L stick: move",     13, TS_8b_White);
-      printLeft("R stick: look",     23, TS_8b_White);
-      printLeft("Gun fires itself",  33, TS_8b_White);
-      printLeft("2 hits wins round", 43, TS_8b_White);
-      printCentered("Select: back", 54, TS_8b_Blue);
+      printLeft("L stick: move",     12, TS_8b_White);
+      printLeft("R stick: look",     21, TS_8b_White);
+      printLeft("Gun fires itself",  30, TS_8b_White);
+      printLeft("2 hits wins round", 39, TS_8b_White);
+      printLeft("Top-left btn: pause", 47, TS_8b_Gray);
+      printCentered("Select: back", 56, TS_8b_Blue);
       break;
   }
   bleIrqOn();
@@ -1118,7 +1148,7 @@ void startSingleplayer(unsigned long now) {
   setColours();
   myRound = 0;
   matchOver = true;              // makes startRound() reset the scores for a fresh match
-  waitRelease = true;
+  prevGameButtons = display.getButtons();  // the menu's button press doesn't count
   startRound(now);
   lastFpsTime = now;
   frames = 0;
@@ -1132,7 +1162,7 @@ void startMultiplayer(uint8_t chosenRole) {
          wokeFromFreeze ? " (restarted after a freeze)" : "");
   netBegin();
   netStarted = true;
-  waitRelease = true;
+  prevGameButtons = display.getButtons();
   enterWaiting();
 }
 
@@ -1140,9 +1170,15 @@ void updateMenu(unsigned long now) {
   uint8_t in = menuInput();
 
   int old = sel;
-  if ((in & MENU_UP) && sel > 0)                 sel--;
-  if ((in & MENU_DOWN) && sel < itemCount() - 1) sel++;
+  if ((in & MENU_UP) && sel > 0) sel--;
+  if (in & MENU_DOWN) sel = (sel + 1) % itemCount();   // wraps, so one button can reach everything
   if (sel != old) { drawScreen(); playMenuMoveSound(); }
+
+  if ((in & MENU_BACK) && screen != SCR_MAIN) {       // BACK: sub-menu -> main menu
+    playMenuMoveSound();
+    goTo(SCR_MAIN, screen == SCR_MULTI ? 1 : (screen == SCR_SETTINGS ? 2 : 3));
+    return;
+  }
 
   if (!(in & MENU_SELECT)) return;
   playMenuSelectSound();
@@ -1175,20 +1211,117 @@ void updateMenu(unsigned long now) {
   }
 }
 
-// Multiplayer: hold any button for 1 s -> restart the watch, which brings back the main menu.
+// Multiplayer: leaving restarts the watch, which brings back the main menu.
 // (A restart is the clean way to switch Bluetooth off again.)
-void checkHoldForMenu(unsigned long now) {
-  static unsigned long holdStart = 0;
-  if (display.getButtons()) {
-    if (holdStart == 0) holdStart = now;
-    if (now - holdStart >= 1000) {
-      drawTextScreen("Back to menu...", TS_8b_Yellow, "", "");
-      while (display.getButtons()) { watchdogKick(); delay(10); }  // wait for release
-      NVIC_SystemReset();
+void quitToMenu() {
+  if (singleplayer) { enterMenu(); return; }
+  if (matchActive) { evtMatchAbort(); matchActive = false; }
+  drawTextScreen("Back to menu...", TS_8b_Yellow, "", "");
+  unsigned long t = millis();
+  while (display.getButtons() && millis() - t < 1500) { watchdogKick(); delay(10); }  // wait for release
+  NVIC_SystemReset();
+}
+
+// =====================================================================
+//  Pause (BACK button during a round)
+//  In multiplayer the other watch freezes too and shows "PAUSED by other player";
+//  only the player who paused can resume. Either player can quit.
+// =====================================================================
+void drawPauseScreen() {
+  bleIrqOff();
+  display.clearScreen();
+  display.setFont(thinPixel7_10ptFontInfo);
+  printCentered("PAUSED", 2, TS_8b_Yellow);
+  if (pausedBySelf) {
+    drawItem("RESUME", 20, pauseSel == 0);
+    drawItem("QUIT TO MENU", 34, pauseSel == 1);
+    printCentered("BACK btn: resume", 54, TS_8b_Blue);
+  } else {
+    printCentered("by the other player", 16, TS_8b_White);
+    drawItem("QUIT TO MENU", 34, true);
+    printCentered("Wait or quit", 54, TS_8b_Blue);
+  }
+  bleIrqOn();
+}
+
+void enterPause(bool bySelf, unsigned long now) {
+  if (state != STATE_PAUSED) pauseStart = now;
+  state = STATE_PAUSED;
+  pausedBySelf = bySelf;
+  pauseSel = 0;
+  prevButtons = display.getButtons();  // buttons / sticks already held don't count
+  prevStickDir = 0xFF;
+  playMenuSelectSound();
+  drawPauseScreen();
+}
+
+void resumeGame(unsigned long now) {
+  unsigned long pausedFor = now - pauseStart;   // freeze every timer so nothing "catches up"
+  roundStartMs += pausedFor;
+  lastShotTime += pausedFor;
+  botLastShot += pausedFor;
+  botLosSince += pausedFor;
+  oppLastPacket = now;
+  muzzleFlashUntil = hitFlashUntil = damageFlashUntil = 0;
+  state = STATE_PLAYING;
+  prevGameButtons = display.getButtons();
+  playMenuSelectSound();
+}
+
+void updatePause(unsigned long now) {
+  uint8_t in = menuInput();
+
+  if (pausedBySelf) {
+    if (in & MENU_BACK) { pauseSel = 0; in |= MENU_SELECT; }   // BACK again = resume
+    int old = pauseSel;
+    if (in & MENU_UP)   pauseSel = 0;
+    if (in & MENU_DOWN) pauseSel = (pauseSel + 1) % 2;
+    if (pauseSel != old) { drawPauseScreen(); playMenuMoveSound(); }
+    if (in & MENU_SELECT) {
+      if (pauseSel == 1) { quitToMenu(); return; }
+      if (!singleplayer && oppPaused) enterPause(false, now);   // they paused too: wait for them
+      else resumeGame(now);
     }
   } else {
-    holdStart = 0;
+    if (in & MENU_SELECT) { quitToMenu(); return; }
+    if (in & MENU_BACK) { enterPause(true, now); return; }       // I want to pause as well
+    if (!oppPaused) resumeGame(now);                            // they resumed
   }
+}
+
+// =====================================================================
+//  Match over: YOU WIN / GAME OVER, then back to the main menu
+// =====================================================================
+void showMatchOver() {
+  state = STATE_MATCH_OVER;
+  matchOverPromptShown = false;
+  bool won = roundsMe > roundsOpp;
+  char score[24];
+  sprintf(score, "You %d - %d %s", roundsMe, roundsOpp, singleplayer ? "Bot" : "Them");
+
+  bleIrqOff();
+  display.clearScreen();
+  display.setFont(liberationSansNarrow_14ptFontInfo);
+  printCentered(won ? "YOU WIN!" : "GAME OVER", 6, won ? TS_8b_Green : TS_8b_Red);
+  display.setFont(thinPixel7_10ptFontInfo);
+  printCentered(score, 32, TS_8b_White);
+  bleIrqOn();
+}
+
+void updateMatchOver(unsigned long now) {
+  unsigned long t = now - stateStart;
+  if (t < MATCH_OVER_MIN_MS) return;
+  if (!matchOverPromptShown) {
+    matchOverPromptShown = true;
+    prevButtons = display.getButtons();
+    prevStickDir = 0xFF;
+    bleIrqOff();
+    display.setFont(thinPixel7_10ptFontInfo);
+    printCentered("Press any button", 52, TS_8b_Blue);
+    bleIrqOn();
+    return;
+  }
+  if (menuInput() || t >= MATCH_OVER_AUTO_MS) quitToMenu();
 }
 
 // =====================================================================
@@ -1211,6 +1344,7 @@ void setup() {
 // =====================================================================
 //  Main loop
 // =====================================================================
+// (lastFrame / lastFpsTime / frames are declared above the bot section)
 
 void loop() {
   unsigned long now = millis();
@@ -1233,26 +1367,26 @@ void loop() {
     // Waiting for the other player
     if (state == STATE_WAITING) {
       if (!waitingScreenDrawn) {
-        if (role == ROLE_A) drawTextScreen("HOST - Player A", TS_8b_Blue, "Waiting for B...", "Hold btn: menu");
-        else                drawTextScreen("JOIN - Player B", TS_8b_Red, "Connecting to A", "Hold btn: menu");
+        if (role == ROLE_A) drawTextScreen("HOST - Player A", TS_8b_Blue, "Waiting for B...", "BACK btn: menu");
+        else                drawTextScreen("JOIN - Player B", TS_8b_Red, "Connecting to A", "BACK btn: menu");
         waitingScreenDrawn = true;
       }
-      if (waitRelease) { if (!display.getButtons()) waitRelease = false; }
-      else checkHoldForMenu(now);
+      if (backPressed()) { quitToMenu(); return; }
       if (netConnected) {
         gotReply = true;    // B speaks first
         replyDue = false;
         myRound = 0; roundsMe = 0; roundsOpp = 0; matchOver = false;
         matchActive = false;
-        waitRelease = true;
+        oppPaused = false;
         evtHello();
         startRound(now);
       }
       return;
     }
 
-    // Lost the connection mid-game
-    if (!netConnected) { enterWaiting(); return; }
+    // Lost the connection mid-game (on the result screen it doesn't matter: the other
+    // watch has probably just gone back to its menu)
+    if (!netConnected && state != STATE_MATCH_OVER) { enterWaiting(); return; }
 
     // Take turns: A only answers B's packets; B sends when A has answered (or the answer got lost)
     bool sendNow;
@@ -1270,18 +1404,18 @@ void loop() {
     }
   }
 
+  // ---------- Match over / pause screens ----------
+  if (state == STATE_MATCH_OVER) { updateMatchOver(now); return; }
+  if (state == STATE_PAUSED) {
+    updatePause(now);
+    lastFpsTime = now; frames = 0;
+    return;
+  }
+
   // ---------- Round over screen ----------
   if (state == STATE_ROUND_OVER) {
-    unsigned long pause = matchOver ? ROUND_OVER_MS * 2 : ROUND_OVER_MS;
-    if (singleplayer) {
-      if (now - stateStart >= pause) {
-        if (matchOver) enterMenu();   // vs bot: match finished -> back to the main menu
-        else           startRound(now);
-      }
-    } else {
-      checkHoldForMenu(now);          // multiplayer: hold a button to leave, otherwise play on
-      if (now - stateStart >= pause) startRound(now);
-    }
+    if (backPressed()) { quitToMenu(); return; }   // BACK between rounds = leave
+    if (now - stateStart >= ROUND_OVER_MS) startRound(now);
     lastFpsTime = now;  // don't count the pause in the FPS
     frames = 0;
     return;
@@ -1291,12 +1425,13 @@ void loop() {
   // If the other side already moved on to a later round, catch up
   if (!singleplayer && oppRound > myRound) { myRound = oppRound - 1; startRound(now); }
 
-  // Controls (ignored until the button used in the menu is let go)
-  uint8_t b = display.getButtons();
-  if (waitRelease) { if (b) b = 0; else waitRelease = false; }
+  // BACK button = pause (the other watch pauses too)
+  if (backPressed()) { enterPause(true, now); return; }
+  if (!singleplayer && oppPaused) { enterPause(false, now); return; }
+
+  // Controls: joysticks only (the buttons no longer move you)
   float move = 2.5f * dt, turn = 2.5f * dt;
-  bool fwd = b & TSButtonUpperLeft, back = b & TSButtonLowerLeft;
-  bool turnL = b & TSButtonUpperRight, turnR = b & TSButtonLowerRight;
+  bool fwd = false, back = false, turnL = false, turnR = false;
   bool strafeL = false, strafeR = false;
   readJoysticks(fwd, back, strafeL, strafeR, turnL, turnR);
   if (fwd)  tryMove(dirX * move, dirY * move);
