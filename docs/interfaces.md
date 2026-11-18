@@ -34,7 +34,7 @@ Watch (C++) --BLE--> Laptop server (Python) --WebSocket--> Web app on phones / P
 
 ## 3. Packets
 
-### 3.1 Duel packet (watch ⇄ watch) – 11 bytes – `magic = 0xB0`
+### 3.1 Duel packet (watch ⇄ watch) – 12 bytes – `magic = 0xB0`
 | Byte | Field | Type | Meaning |
 |---|---|---|---|
 | 0 | magic | u8 | `0xB0` |
@@ -46,11 +46,12 @@ Watch (C++) --BLE--> Laptop server (Python) --WebSocket--> Web app on phones / P
 | 8 | hitsLanded | u8 | hits I landed on you this round |
 | 9 | flags | u8 | bit0 = fired in the last 100 ms |
 | 10 | shots | u8 | shots I fired this round (since duel_v3) |
+| 11 | rounds | u8 | rounds to win; Player B uses the host's value (since `firmware/tinyboy`) |
 
 Rule: **the shooter decides hits**. Your damage = the other watch's `hitsLanded` for the current round.
 Link: **turn-taking** – B sends, A answers, B sends again (~10/s). A never sends on its own.
 
-### 3.1b Match events (watch → laptop over USB) – since `duel_v3`
+### 3.1b Match events (watch → laptop over USB) – `firmware/tinyboy` (multiplayer only; bot matches are not sent)
 
 The watch plugged into the laptop prints one line per event on its USB serial port (9600 baud).
 Lines start with `EVT,`; every other line (FPS debug etc.) must be ignored.

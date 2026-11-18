@@ -10,9 +10,9 @@ Code adapted from any of these is also credited in a comment at the top of the s
   https://lodev.org/cgtutor/raycasting.html and https://lodev.org/cgtutor/raycasting3.html
 - **BLE UART example** (`experiments/ble_uart_test`): TinyCircuits ST BLE TinyShield UART example by Ben Rose, TinyCircuits —
   https://learn.tinycircuits.com/Communication/Bluetooth-Low-Energy_TinyShield_Tutorial/
-- **BLE watch-to-watch** (`experiments/ble_uart_test` changes, `experiments/ble_central_test`, `duel_v1`, `duel_v2`, `duel_v3`):
+- **BLE watch-to-watch** (`firmware/tinyboy/tinyboy.ino`, `experiments/ble_uart_test` changes, `experiments/ble_central_test`, `duel_v1`, `duel_v2`, `duel_v3`):
   based on the TinyCircuits ST BLE UART example (Ben Rose, TinyCircuits) and ST's BlueNRG-MS client sample app
-- **Joystick Wireling input** (`experiments/joystick_test`, `duel_v2`, `duel_v3`): based on the TinyCircuits Joystick Wireling tutorial —
+- **Joystick Wireling input** (`firmware/tinyboy/tinyboy.ino`, `experiments/joystick_test`, `duel_v2`, `duel_v3`): based on the TinyCircuits Joystick Wireling tutorial —
   https://learn.tinycircuits.com/Wirelings/Joystick_Wireling_Tutorial
 
 ## Libraries
