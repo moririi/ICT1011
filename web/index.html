@@ -2101,7 +2101,11 @@ async function generateCommentary() {
 
     renderReport(text);
     $("aiStatus").textContent =
-      "AI commentary received successfully.";
+  result.source === "stats"
+    ? "Statistics report generated"
+    : result.source === "ai"
+      ? "AI commentary received successfully."
+      : "Match report generated.";
 
   } catch (error) {
     $("aiStatus").textContent =
