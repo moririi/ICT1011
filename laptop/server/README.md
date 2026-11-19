@@ -14,6 +14,7 @@ The referee for the Arena mode: it holds the one true game state and decides hit
 | `fakewatch.py` | Software watches: `AutoWatch` (computer player) and `KeyboardWatch` (you). They move themselves and only learn about the world from WORLD/EVENT packets, like the real firmware |
 | `sim.py` | A whole 2-player match through the real packet path, in simulated time (fast), with optional packet loss |
 | `play.py` | Play a match yourself on the laptop with the keyboard (Windows) |
+| `watch_link.py` | The laptop plays Player B over Bluetooth against one real watch (duel packets). Step 1: B stands still |
 
 ## Try it (from the `laptop` folder)
 ```powershell
@@ -31,6 +32,32 @@ python -m unittest -v                                       # run the tests
 `[0xC3, kind, a, b]`: 1 = match start, 2 = match end (a = winner id, 0xFF = draw), 3 = respawn (a, b = spawn x, y in 1/16 squares: the watch must move there; repeated every tick until the watch arrives),
 4 = kill (a = killer, b = victim). WORLD `flags`: bit0 you were hit, bit1 you landed a hit (each stays on for 0.3 s).
 The `Link` class is the only thing a Bluetooth layer has to replace: any object with `to_server` / `to_watch` queues works.
+
+## Laptop as Player B against one watch (`watch_link.py`)
+The laptop connects to a watch running the normal firmware and plays the 2-player duel as Player B,
+using the duel packet (docs/interfaces.md 3.1), not the Arena packets.
+
+1. Flash `firmware/tinyboy` (from main) to the watch. On the watch: MULTIPLAYER -> HOST (A). It shows "Waiting for B".
+2. Turn Bluetooth on in Windows. Close nRF Connect and do not pair the watch in Windows settings.
+3. From the `laptop` folder:
+```powershell
+python -m server.watch_link --scan        # the watch should appear as TinyboyA  0A:80:E1:00:34:12
+python -m server.watch_link               # step 1: Player B stands still at (13.5, 13.5) facing west
+python -m server.watch_link --verbose     # same, printing every packet
+```
+**Step 1 works if** the watch leaves "Waiting for B" and, after you walk towards the bottom-right corner,
+you see the red Player B standing there. You can shoot it: after 2 hits the round ends on both sides.
+
+How it behaves (copied from Player B in `firmware/tinyboy/tinyboy.ino`):
+- B speaks first; sends again once the watch answered and 100 ms passed, or after 300 ms without an answer.
+- Shooter decides hits: B's damage = the watch's hitsLanded, only for the same round number.
+- After a round, B keeps sending the final counts for the 2.5 s round-over screen, then starts the next round
+  (and catches up if the watch is already on a later round). Match length = the watch's "rounds" setting.
+- Angle uses the firmware formula `(atan2(dirY, dirX) + pi) / (2 pi) * 255` (west = 255, east = 127).
+- When the watch leaves to the menu it restarts itself, so the link drops; the program then prints a summary and exits.
+
+Tests (`tests/test_watch_link.py`) run it against a Python copy of Player A's firmware logic, including
+30% packet loss, and against a fake Bluetooth client in real time. Not yet tried with a real watch.
 
 ## Known limitations
 - Tested only with fake watches in simulated time: no real Bluetooth, no real latency. `play.py` key handling is unit-tested, but
