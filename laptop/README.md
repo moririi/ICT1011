@@ -51,6 +51,38 @@ python bridge.py --replay sample/events.log --data my_test
 ```
 Then point the bot at `my_test/` – everything works like a real match.
 
+## Live web dashboard (projector / phones)
+
+`bridge.py --live` also serves `web/index.html` and streams the live watch duel to it:
+```powershell
+pip install aiohttp
+python bridge.py --port COM5 --name-a Alice --name-b Bob --live
+```
+- Laptop: open **http://localhost:8000/** and press **Connect** (the address is filled in already).
+- Phones / projector on the same WiFi: **http://&lt;laptop IP&gt;:8000/** (find the IP with `ipconfig` → IPv4 Address).
+  Windows may ask to allow Python through the firewall: allow it on private networks.
+- Shows the maze, both players moving, health, rounds won (K) / lost (D) and a hit / round feed.
+  The timer shows match time. Referee buttons only work with the arena server, not the watch duel.
+- Test without watches: `python bridge.py --replay sample/events.log --data my_test --live` (plays at real speed).
+
+**Referee (pause / resume both watches from the dashboard)**: start the bridge with a password,
+```powershell
+python bridge.py --port COM5 --name-a Alice --name-b Bob --live --host-token 1234
+```
+then type `1234` into **Host Token** on the dashboard. **Pause Match** freezes both watches ("PAUSED by the referee");
+the players can quit but only the referee can resume. Pause works during a round. Restart / settings don't apply to the duel.
+
+**Match report**: after a match, **Generate Match Report** writes a report from the match statistics
+(rounds, fastest round, flawless rounds, comebacks). Optional: put `ANTHROPIC_API_KEY=...` in `laptop/.env`
+and an AI model writes it instead (falls back to the statistics report if anything goes wrong).
+
+**One watch vs the laptop bot** (watch on MULTIPLAYER → HOST (A), nothing plugged in by USB needed):
+```powershell
+python -u -m server.watch_link | python bridge.py --stdin --name-a You --name-b "Laptop bot" --live
+```
+watch_link's status lines still show in the window; its EVT lines go into matches.json, Telegram and the dashboard.
+Use only one event source per match (don't also run `bridge.py --port` for the same watch).
+
 ## Bot commands
 | Command | What it does |
 |---|---|

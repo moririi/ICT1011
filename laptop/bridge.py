@@ -15,6 +15,13 @@ Live, from a watch (close the Arduino Serial Monitor first - only one program ca
 Replay a saved log (no watch needed - for testing the bot):
     python bridge.py --replay sample/events.log --data my_test   (writes my_test/matches.json)
 
+Live, from the laptop bot (one watch on HOST (A) vs Naufal's server.watch_link as Player B):
+    python -u -m server.watch_link | python bridge.py --stdin --name-a You --name-b "Laptop bot" --live
+
+Referee buttons on the dashboard (pause / resume both watches from a phone):
+    python bridge.py --port COM5 --name-a Alice --name-b Bob --live --host-token 1234
+    then type 1234 into "Host Token" on the dashboard.
+
 Every raw line is also appended to events_<date>.log, so any session can be replayed later.
 
 Output files (in the --data folder, default: this folder):
@@ -25,6 +32,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 from datetime import datetime
 
@@ -172,6 +180,15 @@ class MatchTracker:
             if self.match:
                 self.finish("aborted")
 
+        elif kind == "PAUSE":
+            if self.match:
+                who = "the referee" if f[1] == "R" else (self.name(f[1]) if f[1] in ("A", "B") else f[1])
+                print(f"    || paused by {who}")
+
+        elif kind == "RESUME":
+            if self.match:
+                print("    >> resumed")
+
         elif kind == "SHOT":
             pass  # per-round shot totals come in ROUND_END (covers both players)
 
@@ -204,6 +221,7 @@ class MatchTracker:
 EXPECTED_FIELDS = {  # minimum number of fields (after 'EVT') per event type
     "HELLO": 2, "MATCH_START": 2, "ROUND_START": 2, "SHOT": 3, "HIT": 4,
     "POS": 4, "ROUND_END": 8, "MATCH_END": 4, "MATCH_ABORT": 1,
+    "PAUSE": 2, "RESUME": 1,
 }
 NUMERIC_FIELDS = {  # positions of fields that must be whole numbers
     "ROUND_START": [1], "SHOT": [2], "HIT": [3],
@@ -235,13 +253,15 @@ def parse_line(line):
     return f
 
 
-def run(lines, tracker, raw_log):
+def run(lines, tracker, raw_log, live=None, replay_delay=0.0, echo_other=False):
     skipped = 0
     for raw in lines:
         if raw_log:
             raw_log.write(raw if raw.endswith("\n") else raw + "\n")
             raw_log.flush()
         if not raw.strip().startswith("EVT,"):
+            if echo_other and raw.strip():
+                print(raw.rstrip())   # --stdin: show the other program's status lines
             continue  # FPS/debug lines
         f = parse_line(raw)
         if f is None:
@@ -249,23 +269,64 @@ def run(lines, tracker, raw_log):
             print(f"[skip] damaged line: {raw.strip()!r}")
             continue
         tracker.handle(f)
+        if live is not None:
+            live.on_event(f, tracker.match["id"] if tracker.match else None)
+            if replay_delay and f[0] == "POS":
+                time.sleep(replay_delay)  # replay at roughly real speed (POS lines come 5x per second)
     return skipped
 
 
+class SerialLink:
+    """The watch's USB port: reads its lines, and lets the dashboard's referee send commands back
+    (CMD,PAUSE / CMD,RESUME - docs/interfaces.md 3.1c). Reconnects if the watch restarts."""
+
+    def __init__(self, port):
+        self.port = port
+        self.ser = None
+        self.write_lock = threading.Lock()
+
+    def send(self, command):
+        """Send one command line to the watch. Returns True if it was written."""
+        with self.write_lock:
+            ser = self.ser
+            if ser is None:
+                return False
+            try:
+                ser.write((command + "\n").encode())
+                ser.flush()
+                return True
+            except Exception as e:
+                print(f"[port] could not send {command}: {e}")
+                return False
+
+    def lines(self):
+        import serial  # pip install pyserial
+        while True:
+            try:
+                with serial.Serial(self.port, 9600, timeout=1, write_timeout=1) as ser:
+                    self.ser = ser
+                    print(f"Listening on {self.port} ... (Ctrl+C to stop)")
+                    while True:
+                        b = ser.readline()
+                        if b:
+                            yield b.decode(errors="replace")
+            except serial.SerialException as e:
+                self.ser = None
+                # the watch restarted (watchdog / new upload) or was unplugged - keep trying
+                print(f"[port] {e} - retrying in 2 s (close the Arduino Serial Monitor if it's open)")
+                time.sleep(2)
+
+
 def serial_lines(port):
-    import serial  # pip install pyserial
-    while True:
-        try:
-            with serial.Serial(port, 9600, timeout=1) as ser:
-                print(f"Listening on {port} ... (Ctrl+C to stop)")
-                while True:
-                    b = ser.readline()
-                    if b:
-                        yield b.decode(errors="replace")
-        except serial.SerialException as e:
-            # the watch restarted (watchdog / new upload) or was unplugged - keep trying
-            print(f"[port] {e} - retrying in 2 s (close the Arduino Serial Monitor if it's open)")
-            time.sleep(2)
+    return SerialLink(port).lines()
+
+
+def last_finished_match(tracker):
+    """Newest finished match in matches.json (for the dashboard's match report), or None."""
+    for m in reversed(tracker.db["matches"]):
+        if m.get("status") == "finished":
+            return m
+    return None
 
 
 def main():
@@ -273,26 +334,60 @@ def main():
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--port", help="watch serial port, e.g. COM5")
     src.add_argument("--replay", help="replay a saved log file instead of a live watch")
+    src.add_argument("--stdin", action="store_true",
+                     help="read EVT lines piped in from another program, e.g. server.watch_link (laptop bot)")
     ap.add_argument("--data", default=HERE, help="folder for matches.json and positions/")
     ap.add_argument("--out", default="matches.json", help="output file name")
     ap.add_argument("--name-a", help="display name for Player A")
     ap.add_argument("--name-b", help="display name for Player B")
+    ap.add_argument("--live", action="store_true",
+                    help="also serve the web dashboard with the live match (needs: pip install aiohttp)")
+    ap.add_argument("--live-port", type=int, default=8000, help="port for the live dashboard (default 8000)")
+    ap.add_argument("--host-token", help="password for the dashboard's referee buttons (pause / resume the "
+                                         "watches). Without it the referee buttons stay off")
     args = ap.parse_args()
 
     tracker = MatchTracker(args.data, args.out, {"A": args.name_a, "B": args.name_b})
+    link = SerialLink(args.port) if args.port else None
+    live = None
+    if args.live:
+        from live_feed import LiveFeed
+        live = LiveFeed({p: tracker.name(p) for p in ("A", "B")}, port=args.live_port,
+                        host_token=args.host_token,
+                        send_command=link.send if link else None,
+                        last_match=lambda: last_finished_match(tracker))
+        live.start()
 
     if args.replay:
         with open(args.replay, encoding="utf-8") as f:
-            skipped = run(f, tracker, None)
+            skipped = run(f, tracker, None, live, replay_delay=0.2 if live else 0.0)
         if tracker.match is not None:
             tracker.finish("aborted")
         print(f"Replay done. Skipped {skipped} damaged line(s).")
+        if live is not None:
+            print("Dashboard still running - Ctrl+C to stop.")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
         return
 
     log_path = os.path.join(args.data, f"events_{datetime.now():%Y%m%d}.log")
     with open(log_path, "a", encoding="utf-8") as raw_log:
         try:
-            run(serial_lines(args.port), tracker, raw_log)
+            if args.stdin:
+                try:
+                    sys.stdin.reconfigure(errors="replace")
+                except AttributeError:
+                    pass
+                print("Reading match events from the piped program ... (Ctrl+C to stop)")
+                run(sys.stdin, tracker, raw_log, live, echo_other=True)
+                if tracker.match is not None:   # the other program ended mid-match
+                    tracker.finish("aborted")
+                print("Input ended.")
+            else:
+                run(link.lines(), tracker, raw_log, live)
         except KeyboardInterrupt:
             if tracker.match is not None:
                 tracker.finish("aborted")

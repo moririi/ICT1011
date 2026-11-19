@@ -81,6 +81,7 @@ struct __attribute__((packed)) DuelPacket {
 };
 #define FLAG_FIRED  0x01
 #define FLAG_PAUSED 0x02   // this player has the game paused
+#define FLAG_REF    0x04   // ... because the referee (laptop / phone dashboard) paused it
 const unsigned long SEND_INTERVAL_MS = 100;  // 10 packets per second (was 20 - less traffic, fewer clashes)
 
 // =====================================================================
@@ -187,8 +188,10 @@ bool backPressed() {                    // true only on the frame the BACK butto
 }
 
 // Pause
-bool pausedBySelf = false;    // true = I paused, false = the other player paused
+enum PauseBy { PAUSE_SELF, PAUSE_OPP, PAUSE_REF };
+uint8_t pauseBy = PAUSE_SELF; // who paused: me, the other player, or the referee over USB
 bool oppPaused = false;       // the other watch's latest packet says it is paused
+bool oppRefPaused = false;    // ... and that it was the referee
 unsigned long pauseStart = 0;
 int pauseSel = 0;             // 0 = RESUME, 1 = QUIT TO MENU
 const unsigned long MATCH_OVER_MIN_MS = 2000;   // result screen ignores input for this long
@@ -453,6 +456,7 @@ void onNetReceive(uint8_t *data, uint8_t len) {
   if (role == ROLE_B && (p.rounds == 1 || p.rounds == 3 || p.rounds == 5)) roundsToWin = p.rounds;  // host decides
   if (p.flags & FLAG_FIRED) oppFireFlashUntil = millis() + MUZZLE_FLASH_MS;
   oppPaused = (p.flags & FLAG_PAUSED) != 0;
+  oppRefPaused = (p.flags & FLAG_REF) != 0;
   oppLastPacket = millis();
   if (role == ROLE_A) replyDue = true;  // A: answer this packet
   else                gotReply = true;  // B: our turn to send again
@@ -468,7 +472,8 @@ void sendMyState(unsigned long now) {
   p.angle = (uint8_t)((atan2f(dirY, dirX) + PI) / (2 * PI) * 255);
   p.hitsLanded = myHitsLanded;
   p.flags = (now - lastShotTime < 100) ? FLAG_FIRED : 0;
-  if (state == STATE_PAUSED && pausedBySelf) p.flags |= FLAG_PAUSED;
+  if (state == STATE_PAUSED && pauseBy == PAUSE_SELF) p.flags |= FLAG_PAUSED;
+  if (state == STATE_PAUSED && pauseBy == PAUSE_REF)  p.flags |= FLAG_PAUSED | FLAG_REF;
   p.shots = myShots;
   p.rounds = roundsToWin;
   netSend((uint8_t *)&p, sizeof(p));
@@ -659,6 +664,16 @@ void evtMatchEnd() {
   int roundsA = role == ROLE_A ? roundsMe : roundsOpp;
   int roundsB = role == ROLE_A ? roundsOpp : roundsMe;
   evtStart("MATCH_END"); evtChar(winner); evtNum(roundsA); evtNum(roundsB); evtEnd();
+}
+
+void evtPause(char who) {   // who = A, B, or R (referee)
+  if (!evtReady()) return;
+  evtStart("PAUSE"); evtChar(who); evtEnd();
+}
+
+void evtResume() {
+  if (!evtReady()) return;
+  evtStart("RESUME"); evtEnd();
 }
 
 void evtMatchAbort() {
@@ -1223,36 +1238,43 @@ void quitToMenu() {
 }
 
 // =====================================================================
-//  Pause (BACK button during a round)
-//  In multiplayer the other watch freezes too and shows "PAUSED by other player";
-//  only the player who paused can resume. Either player can quit.
+//  Pause (BACK button during a round, or the referee on the laptop / phone dashboard)
+//  In multiplayer the other watch freezes too and shows who paused.
+//  Only whoever paused can resume (the referee resumes from the dashboard). Either player can quit.
 // =====================================================================
 void drawPauseScreen() {
   bleIrqOff();
   display.clearScreen();
   display.setFont(thinPixel7_10ptFontInfo);
   printCentered("PAUSED", 2, TS_8b_Yellow);
-  if (pausedBySelf) {
+  if (pauseBy == PAUSE_SELF) {
     drawItem("RESUME", 20, pauseSel == 0);
     drawItem("QUIT TO MENU", 34, pauseSel == 1);
     printCentered("BACK btn: resume", 54, TS_8b_Blue);
   } else {
-    printCentered("by the other player", 16, TS_8b_White);
+    bool ref = (pauseBy == PAUSE_REF) || oppRefPaused;
+    printCentered(ref ? "by the referee" : "by the other player", 16, TS_8b_White);
     drawItem("QUIT TO MENU", 34, true);
     printCentered("Wait or quit", 54, TS_8b_Blue);
   }
   bleIrqOn();
 }
 
-void enterPause(bool bySelf, unsigned long now) {
-  if (state != STATE_PAUSED) pauseStart = now;
+void evtPause(char who);   // defined with the other EVT lines below
+void evtResume();
+
+void enterPause(uint8_t by, unsigned long now) {
+  bool wasPaused = (state == STATE_PAUSED);
+  if (!wasPaused) pauseStart = now;
   state = STATE_PAUSED;
-  pausedBySelf = bySelf;
+  pauseBy = by;
   pauseSel = 0;
   prevButtons = display.getButtons();  // buttons / sticks already held don't count
   prevStickDir = 0xFF;
   playMenuSelectSound();
   drawPauseScreen();
+  char who = by == PAUSE_REF ? 'R' : (by == PAUSE_SELF ? meLetter() : (oppRefPaused ? 'R' : oppLetter()));
+  evtPause(who);
 }
 
 void resumeGame(unsigned long now) {
@@ -1266,12 +1288,19 @@ void resumeGame(unsigned long now) {
   state = STATE_PLAYING;
   prevGameButtons = display.getButtons();
   playMenuSelectSound();
+  evtResume();
+}
+
+// Leave a pause I (or the referee) started: wait for the other player if they paused too
+void endMyPause(unsigned long now) {
+  if (!singleplayer && oppPaused) enterPause(PAUSE_OPP, now);
+  else resumeGame(now);
 }
 
 void updatePause(unsigned long now) {
   uint8_t in = menuInput();
 
-  if (pausedBySelf) {
+  if (pauseBy == PAUSE_SELF) {
     if (in & MENU_BACK) { pauseSel = 0; in |= MENU_SELECT; }   // BACK again = resume
     int old = pauseSel;
     if (in & MENU_UP)   pauseSel = 0;
@@ -1279,13 +1308,46 @@ void updatePause(unsigned long now) {
     if (pauseSel != old) { drawPauseScreen(); playMenuMoveSound(); }
     if (in & MENU_SELECT) {
       if (pauseSel == 1) { quitToMenu(); return; }
-      if (!singleplayer && oppPaused) enterPause(false, now);   // they paused too: wait for them
-      else resumeGame(now);
+      endMyPause(now);
     }
+  } else if (pauseBy == PAUSE_REF) {
+    if (in & MENU_SELECT) { quitToMenu(); return; }              // players can still leave
   } else {
+    static bool lastRef = false;
+    if (oppRefPaused != lastRef) { lastRef = oppRefPaused; drawPauseScreen(); }  // who-paused text
     if (in & MENU_SELECT) { quitToMenu(); return; }
-    if (in & MENU_BACK) { enterPause(true, now); return; }       // I want to pause as well
+    if (in & MENU_BACK) { enterPause(PAUSE_SELF, now); return; } // I want to pause as well
     if (!oppPaused) resumeGame(now);                            // they resumed
+  }
+}
+
+// =====================================================================
+//  Referee commands from the laptop over USB (sent by bridge.py --live, see docs/interfaces.md 3.1c)
+//    CMD,PAUSE    pause the round on both watches (players can't resume, only quit)
+//    CMD,RESUME   end the referee's pause
+//  Only the watch plugged into the laptop gets them; the other one follows over Bluetooth.
+// =====================================================================
+char cmdBuf[24];
+uint8_t cmdLen = 0;
+
+void handleCommand(const char *cmd, unsigned long now) {
+  if (strcmp(cmd, "CMD,PAUSE") == 0) {
+    if (state == STATE_PLAYING || (state == STATE_PAUSED && pauseBy != PAUSE_REF)) enterPause(PAUSE_REF, now);
+  } else if (strcmp(cmd, "CMD,RESUME") == 0) {
+    if (state == STATE_PAUSED && pauseBy == PAUSE_REF) endMyPause(now);
+  }
+}
+
+void readUsbCommands(unsigned long now) {
+  while (SerialUSB.available()) {
+    char c = SerialUSB.read();
+    if (c == '\n' || c == '\r') {
+      cmdBuf[cmdLen] = 0;
+      if (cmdLen > 0) handleCommand(cmdBuf, now);
+      cmdLen = 0;
+    } else if (cmdLen < sizeof(cmdBuf) - 1) {
+      cmdBuf[cmdLen++] = c;
+    }
   }
 }
 
@@ -1358,6 +1420,11 @@ void loop() {
   // ---------- Menu ----------
   if (state == STATE_MENU) { updateMenu(now); return; }
 
+  // ---------- Referee commands from the laptop (USB) ----------
+  stage = 7;
+  readUsbCommands(now);
+  stage = 0;
+
   // ---------- Multiplayer link ----------
   if (!singleplayer) {
     stage = 1;
@@ -1377,7 +1444,7 @@ void loop() {
         replyDue = false;
         myRound = 0; roundsMe = 0; roundsOpp = 0; matchOver = false;
         matchActive = false;
-        oppPaused = false;
+        oppPaused = oppRefPaused = false;
         evtHello();
         startRound(now);
       }
@@ -1426,8 +1493,8 @@ void loop() {
   if (!singleplayer && oppRound > myRound) { myRound = oppRound - 1; startRound(now); }
 
   // BACK button = pause (the other watch pauses too)
-  if (backPressed()) { enterPause(true, now); return; }
-  if (!singleplayer && oppPaused) { enterPause(false, now); return; }
+  if (backPressed()) { enterPause(PAUSE_SELF, now); return; }
+  if (!singleplayer && oppPaused) { enterPause(PAUSE_OPP, now); return; }
 
   // Controls: joysticks only (the buttons no longer move you)
   float move = 2.5f * dt, turn = 2.5f * dt;
