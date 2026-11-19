@@ -4,7 +4,7 @@ matches.json stays the source of truth (only bridge.py writes it, docs/interface
 Importing again is safe: each match is replaced, never duplicated.
 
     python database.py --data sample                  # import, then print the top players
-    python database.py --data sample --top accuracy   # rank by wins | accuracy | hits | rounds
+    python database.py --data sample --top winrate    # rank by wins | winrate | hits | rounds
 """
 import argparse
 import json
@@ -58,29 +58,34 @@ CREATE TABLE IF NOT EXISTS positions (
 CREATE INDEX IF NOT EXISTS positions_by_match ON positions (match_id, slot);
 """
 
-# Career stats per player, counting finished matches only (like the bot's /leaderboard)
+# Career stats per player, counting finished matches only (like the bot's /leaderboard).
+# No shot accuracy: the gun fires automatically, so hits/shots is always tiny.
 PLAYER_STATS_SQL = """
 SELECT p.name,
        COUNT(*)                                         AS matches,
        SUM(m.winner_slot = mp.slot)                     AS wins,
        SUM(mp.rounds_won)                               AS rounds_won,
+       COALESCE(SUM(r.played), 0)                       AS rounds_played,
        COALESCE(SUM(s.shots), 0)                        AS shots,
        COALESCE(SUM(s.hits), 0)                         AS hits,
-       1.0 * COALESCE(SUM(s.hits), 0) / MAX(COALESCE(SUM(s.shots), 0), 1) AS accuracy
+       1.0 * SUM(mp.rounds_won) / MAX(COALESCE(SUM(r.played), 0), 1)       AS win_rate,
+       1.0 * COALESCE(SUM(s.hits), 0) / MAX(COALESCE(SUM(r.played), 0), 1) AS hits_per_round
 FROM match_players mp
 JOIN players p ON p.id = mp.player_id
 JOIN matches m ON m.id = mp.match_id
 LEFT JOIN (SELECT match_id, slot, SUM(shots) AS shots, SUM(hits) AS hits
            FROM round_stats GROUP BY match_id, slot) s
        ON s.match_id = mp.match_id AND s.slot = mp.slot
+LEFT JOIN (SELECT match_id, COUNT(*) AS played FROM rounds GROUP BY match_id) r
+       ON r.match_id = mp.match_id
 WHERE m.status = 'finished'
 GROUP BY p.id
 """
 
 TOP_ORDER = {
-    "wins": "wins DESC, accuracy DESC",
-    "accuracy": "accuracy DESC, wins DESC",
-    "hits": "hits DESC, accuracy DESC",
+    "wins": "wins DESC, win_rate DESC",
+    "winrate": "win_rate DESC, wins DESC",
+    "hits": "hits_per_round DESC, wins DESC",
     "rounds": "rounds_won DESC, wins DESC",
 }
 
@@ -192,7 +197,8 @@ def main():
     print(f"\nTop players by {args.top}:")
     for i, p in enumerate(top_players(data_dir, args.top), start=1):
         print(f"{i}. {p['name']}: {p['wins']} wins / {p['matches']} matches, "
-              f"{p['hits']}/{p['shots']} hits ({p['accuracy']:.0%}), {p['rounds_won']} rounds won")
+              f"rounds {p['rounds_won']}/{p['rounds_played']} ({p['win_rate']:.0%}), "
+              f"{p['hits_per_round']:.1f} hits per round")
 
     fastest = fastest_round(data_dir)
     if fastest:

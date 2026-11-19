@@ -59,7 +59,7 @@ Then point the bot at `my_test/` – everything works like a real match.
 | `/lastmatch` | Details of the most recent finished match |
 | `/heatmap [match_id]` | Picture of where each player spent their time (default: latest match) |
 | `/replay [match_id]` | Animated GIF replay of a match (default: latest match) |
-| `/top [wins\|accuracy\|hits\|rounds]` | Top players from the match database, plus the fastest round |
+| `/top [wins\|winrate\|hits\|rounds]` | Top players from the match database (round win rate, hits per round), plus the fastest round |
 | `/start` · `/help` | Show the command list |
 
 Plus an automatic report when a match ends.
@@ -70,7 +70,7 @@ Run in `laptop/`. `--data` is the folder that has `matches.json` (default: the c
 python heatmap.py --data sample --match 1          # saves heatmap_match_1.png
 python replay.py --data sample --match 1           # saves replay_match_1.gif (6x speed, change with --speed)
 python database.py --data sample                   # builds sample/arena.db, prints the top players
-python database.py --data sample --top accuracy    # rank by wins | accuracy | hits | rounds
+python database.py --data sample --top winrate    # rank by wins | winrate | hits | rounds
 ```
 - `WORLD_MAP` in `heatmap.py` is a copy of `worldMap` in `firmware/tinyboy/tinyboy.ino` – update it if the map changes.
 - `arena.db` is rebuilt from `matches.json` every time `/top` or `database.py` runs, so never edit it by hand.
