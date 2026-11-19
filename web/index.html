@@ -284,6 +284,70 @@ th {
   .info-grid { grid-template-columns: 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
 }
+
+/* Duel, report and phone-friendly display enhancements */
+[hidden] { display: none !important; }
+.map-stage { position: relative; }
+.pause-overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  gap: 13px; align-items: center; justify-content: center;
+  background: rgba(5,10,20,.78); backdrop-filter: blur(4px);
+  text-align: center; padding: 20px; z-index: 2;
+}
+.pause-title {
+  font-size: clamp(34px,8vw,74px); letter-spacing: .2em;
+  font-weight: 900; color: #ffd166;
+  text-shadow: 0 0 28px rgba(255,209,102,.45);
+}
+.pause-detail {font-size: 14px; line-height: 1.5; color: #e2e9f8; max-width: 80%;}
+.timer-stack { text-align: right; flex-shrink: 0; }
+.timer-label {
+  display: block; color: var(--muted); font-size: 10px;
+  letter-spacing: .14em; font-weight: 700; margin-bottom: 4px;
+}
+.score-head.duel, .score-row.duel {
+  grid-template-columns: minmax(0,1fr) 72px 72px;
+}
+.score-head.duel {font-size: 10px;}
+.hearts {display:inline-block; font-size:19px; color:#ff7787; letter-spacing:2px; min-height:25px;}
+.heart-empty {color:#68788d;}
+.round-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  gap:12px; padding:10px 0; border-bottom:1px solid #28374a; font-size:13px;
+}
+.round-number {color:#91a2bb; font-weight:700;}
+.round-time {color:#ffd166; white-space:nowrap;}
+.report-title {font-size:18px; line-height:1.4; margin:0 0 14px; color:#e9d7ff; font-weight:800;}
+.report-body {margin:0 0 13px; white-space:pre-line;}
+.report-body:last-child {margin-bottom:0;}
+.report-actions {margin-top:15px; display:flex; flex-wrap:wrap; align-items:center;}
+@media (max-width:850px) {
+  /* Map first, then scores and feed; referee controls below game details. */
+  .container {display:flex; flex-direction:column;}
+  header {order:0;}
+  #connectionPanel {order:1;}
+  .grid, .grid > div {display:contents;}
+  #spectatorPanel {order:2;}
+  #scoreboardPanel {order:3;}
+  #killFeedPanel {order:4;}
+  #roundHistoryPanel {order:5;}
+  #matchInfoPanel {order:6;}
+  .info-grid {order:7;}
+  #refereePanel {order:8;}
+  #leaderboardPanel {order:9;}
+  #historyPanel {order:10;}
+  #commentaryPanel {order:11;}
+  footer {order:12;}
+  .panel {width:100%;}
+}
+@media (max-width:450px) {
+  .match-header {align-items:flex-start;}
+  .timer {font-size:25px;}
+  .score-head.duel, .score-row.duel {
+    grid-template-columns:minmax(0,1fr) 65px 65px;
+  }
+  .pause-detail {max-width:95%;}
+}
 </style>
 </head>
 
@@ -304,7 +368,7 @@ th {
   </div>
 </header>
 
-<section class="panel">
+<section class="panel" id="connectionPanel">
   <h2>🔗 SERVER CONNECTION</h2>
 
   <div class="connection">
@@ -352,9 +416,9 @@ th {
 
 <div class="grid">
 
-  <div>
+  <div class="main-left">
 
-    <section class="panel">
+    <section class="panel" id="spectatorPanel">
       <div class="match-header">
         <div>
           <h2>🗺️ LIVE TACTICAL MAP</h2>
@@ -363,20 +427,29 @@ th {
           </div>
         </div>
 
-        <div class="timer" id="timer">02:00</div>
+        <div class="timer-stack">
+          <span class="timer-label" id="timerLabel">TIME LEFT</span>
+          <div class="timer" id="timer">02:00</div>
+        </div>
       </div>
 
-      <canvas id="gameMap"></canvas>
+      <div class="map-stage">
+        <canvas id="gameMap"></canvas>
+        <div class="pause-overlay" id="pauseOverlay" hidden>
+          <div class="pause-title">PAUSED</div>
+          <div class="pause-detail" id="pauseDetail">Match paused by the referee</div>
+        </div>
+      </div>
 
       <div class="legend" id="mapLegend"></div>
 
-      <p class="small">
+      <p class="small" id="demoHelp">
         Demo players pursue opponents and only fire
         when a target is within range and visible.
       </p>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="refereePanel">
       <h2>🎛️ REFEREE CONTROL PANEL</h2>
 
       <div class="controls">
@@ -391,6 +464,7 @@ th {
         </button>
       </div>
 
+      <div id="demoSettings">
       <h3>Game Settings</h3>
 
       <div class="settings-grid">
@@ -423,6 +497,7 @@ th {
       <button class="secondary" id="applySettingsBtn">
         Apply Settings
       </button>
+      </div>
 
       <p class="small">
         Demo controls operate locally. Live referee commands
@@ -434,31 +509,36 @@ th {
 
   </div>
 
-  <div>
+  <div class="main-right">
 
-    <section class="panel">
+    <section class="panel" id="scoreboardPanel">
       <h2>🏆 LIVE SCOREBOARD</h2>
 
       <div class="score-head">
         <span>PLAYER / HEALTH</span>
-        <span class="stat">K</span>
-        <span class="stat">D</span>
+        <span class="stat" id="scoreWonLabel">K</span>
+        <span class="stat" id="scoreLostLabel">D</span>
       </div>
 
       <div id="scoreboard"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="killFeedPanel">
       <h2>💥 LIVE KILL FEED</h2>
       <div id="killFeed"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="roundHistoryPanel" hidden>
+      <h2>🏁 ROUND HISTORY</h2>
+      <div id="roundHistory" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" id="matchInfoPanel">
       <h2>📡 MATCH INFORMATION</h2>
 
       <p>Round: <strong id="roundDisplay">1</strong></p>
       <p>Match ID: <strong id="matchIdDisplay">-</strong></p>
-      <p>Leading Player:
+      <p><span id="leaderLabel">Leading Player:</span>
         <strong id="leaderDisplay">-</strong>
       </p>
 
@@ -471,7 +551,7 @@ th {
 
 </div>
 
-<section class="panel">
+<section class="panel" id="leaderboardPanel">
   <h2>🥇 ALL-TIME LEADERBOARD</h2>
 
   <p class="small" id="leaderboardNote"></p>
@@ -495,12 +575,12 @@ th {
   </div>
 </section>
 
-<section class="panel">
+<section class="panel" id="historyPanel">
   <h2>📜 RECENT MATCH HISTORY</h2>
   <div id="matchHistory"></div>
 </section>
 
-<section class="panel">
+<section class="panel" id="commentaryPanel">
   <h2>🤖 AI MATCH COMMENTARY</h2>
 
   <p class="small">
@@ -513,10 +593,9 @@ th {
     Awaiting match completion.
   </div>
 
-  <div style="margin-top:15px">
-    <button id="generateCommentaryBtn">
-      ✨ Generate Match Report
-    </button>
+  <div class="report-actions">
+    <button id="generateCommentaryBtn">✨ Generate Match Report</button>
+    <button class="secondary" id="copyReportBtn" hidden>📋 Copy Report</button>
   </div>
 
   <p class="small" id="aiStatus"></p>
@@ -723,12 +802,14 @@ let app = {
   events: [],
   shots: [],
   clock: 0,
+  reportText: "",
 
   match: {
     id: matchId(),
     mode: "ffa",
     status: "playing",
     remaining: 120,
+    elapsed: 0,
     duration: 120,
     round: 1
   }
@@ -1057,17 +1138,14 @@ function drawMap() {
     ctx.font = "bold 11px Arial";
     ctx.fillText(i + 1, x, y);
 
-    // Health bar
+    // Show duel hit points (0 / 1 / 2), without treating them as percentages.
+    const healthRatio = app.match.mode === "duel"
+      ? duelHitsRemaining(player.health) / 2
+      : Math.max(0, Math.min(1, player.health / 100));
     ctx.fillStyle = "#732b3c";
     ctx.fillRect(x - 16, y - 24, 32, 5);
-
     ctx.fillStyle = "#54e6a0";
-    ctx.fillRect(
-      x - 16,
-      y - 24,
-      32 * player.health / 100,
-      5
-    );
+    ctx.fillRect(x - 16, y - 24, 32 * healthRatio, 5);
   });
 }
 
@@ -1082,8 +1160,15 @@ function formatTime(seconds) {
     ":" + String(t % 60).padStart(2, "0");
 }
 
+function formatElapsedTime(seconds) {
+  const t = Math.max(0, Math.floor(Number(seconds) || 0));
+  return String(Math.floor(t / 60)).padStart(2, "0") +
+    ":" + String(t % 60).padStart(2, "0");
+}
+
 function modeName(mode) {
   return ({
+    duel: "DUEL",
     ffa: "FFA",
     tdm: "2V2 TDM",
     koth: "KING OF THE HILL"
@@ -1098,53 +1183,108 @@ function getLeader() {
   )[0];
 }
 
+function duelHitsRemaining(health) {
+  const hp = Number(health);
+  if (!Number.isFinite(hp)) return 2;
+  if (hp <= 2) return Math.max(0, Math.round(hp));
+  return Math.max(0, Math.min(2, Math.round(hp / 50)));
+}
+
 function renderScoreboard() {
+  const duel = app.match.mode === "duel";
   const sorted = [...app.players].sort((a, b) =>
     b.kills - a.kills || a.deaths - b.deaths
   );
 
-  $("scoreboard").innerHTML = sorted.map(p => `
-    <div class="score-row">
-      <div>
-        <div class="player-name" style="color:${p.color}">
-          ● ${escapeHTML(p.name)}
-          ${p.alive ? "" : " ☠"}
-        </div>
-        <div class="health-track">
-          <div class="health-fill"
-            style="width:${p.health}%">
-          </div>
-        </div>
-        <div class="small">${p.health} HP</div>
-      </div>
-      <div class="stat">${p.kills}</div>
-      <div class="stat">${p.deaths}</div>
-    </div>
-  `).join("");
+  $("scoreWonLabel").textContent = duel ? "ROUNDS WON" : "K";
+  $("scoreLostLabel").textContent = duel ? "LOST" : "D";
+  document.querySelector(".score-head").classList.toggle("duel", duel);
 
-  $("mapLegend").innerHTML = app.players.map(p => `
-    <span style="color:${p.color}">
-      ● ${escapeHTML(p.name)}
-    </span>
-  `).join("");
+  $("scoreboard").innerHTML = sorted.map(p => {
+    const hearts = duelHitsRemaining(p.health);
+    const health = duel
+      ? '<div class="hearts" aria-label="' + hearts + ' of 2 hits remaining">' +
+          '<span>' + '♥'.repeat(hearts) + '</span>' +
+          '<span class="heart-empty">' + '♡'.repeat(2 - hearts) + '</span></div>' +
+          '<div class="small">' + hearts + ' / 2 hits remaining</div>'
+      : '<div class="health-track"><div class="health-fill" style="width:' +
+          Math.max(0, Math.min(100, p.health)) + '%"></div></div>' +
+          '<div class="small">' + p.health + ' HP</div>';
+
+    return '<div class="score-row' + (duel ? ' duel' : '') + '">' +
+      '<div><div class="player-name" style="color:' + p.color + '">' +
+      '● ' + escapeHTML(p.name) +
+      (p.alive ? '' : ' ☠') + '</div>' +
+      health + '</div>' +
+      '<div class="stat">' + p.kills + '</div>' +
+      '<div class="stat">' + p.deaths + '</div></div>';
+  }).join("");
+
+  $("mapLegend").innerHTML = app.players.map(p =>
+    '<span style="color:' + p.color + '">● ' +
+    escapeHTML(p.name) + '</span>'
+  ).join("");
 }
 
 function addEvent(event) {
-  const id = String(event.id ??
-    `${event.killer}-${event.victim}-${event.time}`);
-
+  // Support existing text feeds and existing structured events.
+  const item = typeof event === "string" ? {text: event} : (event || {});
+  const text = String(item.text ?? item.message ?? item.detail ?? "");
+  const time = String(item.time ??
+    (app.match.mode === "duel"
+      ? formatElapsedTime(app.match.elapsed)
+      : formatTime(app.match.duration - app.match.remaining)));
+  const id = String(item.id ??
+    (text || [item.killer, item.victim].join("-")) + "-" + time);
   if (app.events.some(e => e.id === id)) return;
-
   app.events.unshift({
     id,
-    killer: String(event.killer || "Unknown"),
-    victim: String(event.victim || "Unknown"),
-    text: String(event.text || ""),
-    time: String(event.time ||
-      formatTime(app.match.duration - app.match.remaining))
+    killer: String(item.killer || "Unknown"),
+    victim: String(item.victim || "Unknown"),
+    text,
+    time,
+    duration_s: Number(item.duration_s ?? NaN)
   });
+  app.events = app.events.slice(0, 40);
+}
 
-  app.events = app.events.slice(0, 30);
+function renderRoundHistory() {
+  const duel = app.match.mode === "duel";
+  $("roundHistoryPanel").hidden = !duel;
+  if (!duel) return;
+
+  const rounds = new Map();
+  for (const event of app.events) {
+    const match = event.text.match(/\bRound\s*(\d+)\s+won\s+by\s+(.+)/i);
+    if (!match) continue;
+    const round = Number(match[1]);
+    const durationMatch = match[2].match(/(\d+(?:\.\d+)?)\s*(?:s|sec|seconds)\b/i);
+    const duration = Number.isFinite(event.duration_s)
+      ? event.duration_s
+      : durationMatch ? Number(durationMatch[1]) : null;
+    const winner = match[2]
+      .replace(/\s*(?:in\s+)?\d+(?:\.\d+)?\s*(?:s|sec|seconds)\b.*$/i, "")
+      .replace(/[\s\-–—|,:()]+$/g, "").trim();
+    if (!rounds.has(round)) rounds.set(round, {round, winner, duration});
+  }
+  const entries = [...rounds.values()].sort((a,b) => a.round - b.round);
+  $("roundHistory").innerHTML = entries.length
+    ? entries.map(r =>
+        '<div class="round-row"><span><span class="round-number">R' +
+        r.round + '</span> &nbsp; ' + escapeHTML(r.winner) +
+        '</span><span class="round-time">' +
+        (r.duration === null ? "—" : r.duration.toFixed(1) + " s") +
+        '</span></div>'
+      ).join("")
+    : '<p class="small">No completed rounds reported yet.</p>';
+}
+
+function renderPauseOverlay() {
+  const paused = app.match.status === "paused";
+  $("pauseOverlay").hidden = !paused;
+  if (!paused) return;
+  const latestPause = app.events.find(e => /paus(?:ed|e)/i.test(e.text));
+  $("pauseDetail").textContent = latestPause?.text || "Match paused by the referee";
 }
 
 function renderFeed() {
@@ -1162,14 +1302,17 @@ function renderFeed() {
 }
 
 function renderMatch() {
-  $("timer").textContent =
-    formatTime(app.match.remaining);
+  const duel = app.match.mode === "duel";
+  $("timerLabel").textContent = duel ? "MATCH TIME" : "TIME LEFT";
+  $("timer").textContent = duel
+    ? formatElapsedTime(app.match.elapsed)
+    : formatTime(app.match.remaining);
 
   $("modeDisplay").textContent =
     modeName(app.match.mode);
 
   $("playersDisplay").textContent =
-    app.players.length + " / 4";
+    app.players.length + (duel ? " / 2" : " / 4");
 
   $("statusDisplay").textContent =
     app.match.status.toUpperCase();
@@ -1184,6 +1327,7 @@ function renderMatch() {
 
   $("leaderDisplay").textContent =
     leader ? leader.name : "-";
+  $("leaderLabel").textContent = duel ? "Rounds Leader:" : "Leading Player:";
 
   $("matchMessage").textContent =
     app.match.status === "finished"
@@ -1197,9 +1341,12 @@ function renderMatch() {
       ? "▶ Resume Match"
       : "⏸ Pause Match";
 
-  $("finishBtn").disabled =
-    app.mode !== "demo" ||
-    app.match.status === "finished";
+  const liveMode = app.mode === "live";
+  $("restartBtn").hidden = liveMode;
+  $("finishBtn").hidden = liveMode;
+  $("demoSettings").hidden = liveMode;
+  $("demoHelp").hidden = liveMode;
+  $("finishBtn").disabled = liveMode || app.match.status === "finished";
 
   $("gameMode").value =
     ["ffa", "tdm", "koth"].includes(app.match.mode)
@@ -1223,7 +1370,9 @@ function render() {
   drawMap();
   renderScoreboard();
   renderFeed();
+  renderRoundHistory();
   renderMatch();
+  renderPauseOverlay();
 }
 
 // =====================================
@@ -1432,18 +1581,19 @@ function resetDemo() {
   app.events = [];
   app.shots = [];
   app.clock = 0;
+  app.reportText = "";
 
   app.match = {
     id: matchId(),
     mode,
     status: "playing",
     remaining: duration,
+    elapsed: 0,
     duration,
     round: 1
   };
 
-  $("commentary").textContent =
-    "Awaiting match completion.";
+  showReportPlaceholder("Awaiting match completion.");
 
   $("aiStatus").textContent = "";
   $("refereeNotice").textContent = "";
@@ -1474,11 +1624,13 @@ function refereeCommand(action, settings = {}) {
     if (action === "pause" &&
         app.match.status === "playing") {
       app.match.status = "paused";
+      addEvent({text: "Match paused by the referee"});
     }
 
     if (action === "resume" &&
         app.match.status === "paused") {
       app.match.status = "playing";
+      addEvent({text: "Match resumed"});
     }
 
     if (action === "restart" ||
@@ -1584,6 +1736,15 @@ function applyServerState(data) {
     match.remaining ??
     app.match.remaining
   );
+  // Duel time counts UP. Read the existing server time field as elapsed.
+  const duel = (match.mode ?? app.match.mode) === "duel";
+  const elapsed = Number(
+    match.elapsed_seconds ?? match.elapsed ?? match.match_time ??
+    match.time_elapsed ?? match.time_seconds ?? match.time ?? (duel ? (
+      match.remaining_seconds ?? match.time_left ??
+      match.remaining ?? app.match.elapsed
+    ) : app.match.elapsed)
+  );
 
   // Reset events when a new match begins
   if (nextId !== previousId) {
@@ -1601,6 +1762,8 @@ function applyServerState(data) {
       ? duration : 120,
     remaining: Number.isFinite(remaining)
       ? remaining : 0,
+    elapsed: Number.isFinite(elapsed)
+      ? elapsed : 0,
     round: Number(match.round ?? 1)
   };
 
@@ -1640,6 +1803,9 @@ function applyServerState(data) {
   if (Array.isArray(source.events)) {
     source.events.forEach(addEvent);
   }
+  if (Array.isArray(source.feed)) {
+    source.feed.forEach(addEvent);
+  }
 
   if (app.match.status === "finished" &&
       (previousStatus !== "finished" ||
@@ -1667,7 +1833,9 @@ function connectServer() {
   app.connected = false;
   app.remoteLeaderboard = null;
   app.events = [];
+  app.reportText = "";
 
+  showReportPlaceholder("Awaiting match completion.");
   $("connectionNote").textContent =
     "Connecting to Python server...";
 
@@ -1700,13 +1868,16 @@ function connectServer() {
       const msg = JSON.parse(event.data);
 
       if (msg.type === "state" ||
-          msg.type === "snapshot") {
+          msg.type === "snapshot" ||
+          msg.type === "world") {
         applyServerState(msg);
       }
 
       if (msg.type === "event") {
         addEvent(msg.event || msg);
         renderFeed();
+        renderRoundHistory();
+        renderPauseOverlay();
       }
 
       if (msg.type === "leaderboard") {
@@ -1716,8 +1887,7 @@ function connectServer() {
       }
 
       if (msg.type === "commentary") {
-        $("commentary").textContent =
-          String(msg.commentary || msg.text || "");
+        renderReport(String(msg.commentary || msg.text || ""));
         $("aiStatus").textContent =
           "Commentary received from server.";
       }
@@ -1760,6 +1930,60 @@ $("connectBtn").onclick = connectServer;
 // =====================================
 // MATCH COMMENTARY
 // =====================================
+
+function showReportPlaceholder(message) {
+  app.reportText = "";
+  $("commentary").textContent = message;
+  $("copyReportBtn").hidden = true;
+}
+
+function renderReport(report) {
+  const raw = String(report || "").trim();
+  if (!raw) { showReportPlaceholder("No report available."); return; }
+  app.reportText = raw;
+  const lines = raw.split(/\r?\n/);
+  const first = lines.findIndex(line => line.trim().length > 0);
+  const headline = lines[first].trim().replace(/^#+\s*/, "")
+    .replace(/^\*\*|\*\*$/g, "");
+  const useHeadline = headline.length <= 120;
+  const body = useHeadline ? lines.slice(first + 1) : lines.slice(first);
+  const box = $("commentary");
+  box.replaceChildren();
+  const heading = document.createElement("div");
+  heading.className = "report-title";
+  heading.textContent = useHeadline ? headline : "MATCH REPORT";
+  box.appendChild(heading);
+  body.join("\n").trim().split(/\n\s*\n/).filter(Boolean).forEach(part => {
+    const paragraph = document.createElement("p");
+    paragraph.className = "report-body";
+    paragraph.textContent = part.trim();
+    box.appendChild(paragraph);
+  });
+  $("copyReportBtn").hidden = false;
+}
+
+$("copyReportBtn").onclick = async () => {
+  if (!app.reportText) return;
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+    await navigator.clipboard.writeText(app.reportText);
+  } catch {
+    // Fallback for phones viewing the laptop over plain HTTP on local Wi-Fi.
+    const field = document.createElement("textarea");
+    field.value = app.reportText;
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand("copy");
+    field.remove();
+    if (!copied) {
+      $("aiStatus").textContent = "Please select and copy the report manually.";
+      return;
+    }
+  }
+  $("aiStatus").textContent = "Report copied to clipboard.";
+};
 
 function matchPayload() {
   return {
@@ -1833,7 +2057,7 @@ async function generateCommentary() {
   }
 
   if (app.mode === "demo") {
-    $("commentary").textContent = demoSummary();
+    renderReport(demoSummary());
     $("aiStatus").textContent =
       "Demo report generated. No AI service was called.";
     return;
@@ -1875,7 +2099,7 @@ async function generateCommentary() {
       throw new Error("Empty commentary response.");
     }
 
-    $("commentary").textContent = text;
+    renderReport(text);
     $("aiStatus").textContent =
       "AI commentary received successfully.";
 
@@ -1883,9 +2107,10 @@ async function generateCommentary() {
     $("aiStatus").textContent =
       "AI server unavailable: " + error.message;
 
-    $("commentary").textContent =
+    showReportPlaceholder(
       "The Python server must provide POST /api/commentary " +
-      "for genuine AI-generated match reports.";
+      "for genuine AI-generated match reports."
+    );
 
   } finally {
     $("generateCommentaryBtn").disabled = false;
