@@ -82,10 +82,17 @@ def calculate_stats(data: dict) -> dict:
                     "wins": p_info.get("wins", 0),
                     "losses": p_info.get("losses", 0),
                     "rounds_won": p_info.get("rounds_won", 0),
+                    "rounds_played": 0,
                     "shots": p_info.get("shots", 0),
                     "hits": p_info.get("hits", 0),
                 }
         if stats:
+            # The totals do not include rounds played, so count them from the finished matches
+            for m in data.get("matches", []):
+                if m.get("status") == "finished":
+                    for p_id in m.get("players", {}):
+                        if p_id in stats:
+                            stats[p_id]["rounds_played"] += len(m.get("rounds", []))
             return stats
 
     # Case B: Fallback calculation iterating through finished matches & rounds
@@ -95,6 +102,7 @@ def calculate_stats(data: dict) -> dict:
         "wins": 0,
         "losses": 0,
         "rounds_won": 0,
+        "rounds_played": 0,
         "shots": 0,
         "hits": 0,
     })
@@ -111,6 +119,7 @@ def calculate_stats(data: dict) -> dict:
             s = stats[p_id]
             s["display_name"] = display
             s["matches"] += 1
+            s["rounds_played"] += len(m.get("rounds", []))
             if p_id == winner:
                 s["wins"] += 1
             else:
@@ -128,10 +137,25 @@ def calculate_stats(data: dict) -> dict:
     return stats
 
 
-def format_accuracy(hits: int, shots: int) -> str:
-    if shots <= 0:
-        return "0.0%"
-    return f"{(hits / shots) * 100:.1f}%"
+# No shot accuracy anywhere: the gun fires automatically, so hits/shots always looks terrible.
+# Rounds won / rounds played and hits per round are fairer.
+def win_rate(rounds_won: int, rounds_played: int) -> float:
+    return rounds_won / rounds_played if rounds_played > 0 else 0.0
+
+
+def format_win_rate(rounds_won: int, rounds_played: int) -> str:
+    return f"{win_rate(rounds_won, rounds_played) * 100:.0f}%"
+
+
+def format_hits_per_round(hits: int, rounds_played: int) -> str:
+    if rounds_played <= 0:
+        return "0.0"
+    return f"{hits / rounds_played:.1f}"
+
+
+def format_duration(seconds: float) -> str:
+    seconds = int(round(seconds))
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 
 # ==========================================
@@ -148,7 +172,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚔️ `/lastmatch` - Details of the most recent finished match\n"
         "🔥 `/heatmap [match_id]` - Where each player spent their time (default: latest match)\n"
         "🎬 `/replay [match_id]` - Animated top-down replay of a match (default: latest match)\n"
-        "📈 `/top [wins|accuracy|hits|rounds]` - Top players from the match database\n"
+        "📈 `/top [wins|winrate|hits|rounds]` - Top players from the match database\n"
         "ℹ️ `/help` - Show this list"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
@@ -162,12 +186,12 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("No finished matches recorded yet.")
         return
 
-    # Rank by wins descending, then accuracy descending
+    # Rank by wins descending, then round win rate descending
     ranked = sorted(
         stats.items(),
         key=lambda item: (
             item[1]["wins"],
-            (item[1]["hits"] / item[1]["shots"]) if item[1]["shots"] > 0 else 0
+            win_rate(item[1]["rounds_won"], item[1]["rounds_played"])
         ),
         reverse=True
     )
@@ -177,9 +201,9 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     for idx, (p_id, s) in enumerate(ranked, start=1):
         rank_icon = medals[idx - 1] if idx <= 3 else f"`{idx}.`"
-        acc = format_accuracy(s["hits"], s["shots"])
+        rate = format_win_rate(s["rounds_won"], s["rounds_played"])
         name = s["display_name"] or p_id
-        lines.append(f"{rank_icon} *{name}* — {s['wins']}W / {s['losses']}L | Acc: `{acc}`")
+        lines.append(f"{rank_icon} *{name}* — {s['wins']}W / {s['losses']}L | Rounds won: `{rate}`")
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
@@ -206,47 +230,61 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"No match history found for player *{target}*.", parse_mode=ParseMode.MARKDOWN)
         return
 
-    acc = format_accuracy(player_data["hits"], player_data["shots"])
+    rate = format_win_rate(player_data["rounds_won"], player_data["rounds_played"])
+    per_round = format_hits_per_round(player_data["hits"], player_data["rounds_played"])
     text = (
         f"📊 *PLAYER STATS: {matched_label}*\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"• *Matches Played:* {player_data['matches']}\n"
         f"• *Wins:* {player_data['wins']} | *Losses:* {player_data['losses']}\n"
-        f"• *Rounds Won:* {player_data['rounds_won']}\n"
-        f"• *Shots Fired:* {player_data['shots']}\n"
-        f"• *Hits Landed:* {player_data['hits']}\n"
-        f"• *Accuracy:* `{acc}`"
+        f"• *Rounds Won:* {player_data['rounds_won']} of {player_data['rounds_played']} (`{rate}`)\n"
+        f"• *Hits Landed:* {player_data['hits']} (`{per_round}` per round)"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
 def format_match_report(match: dict) -> str:
     match_id = match.get("id", "N/A")
-    mode = match.get("mode", "Free-for-All")
+    mode = match.get("mode", "1v1 Duel")
     winner_key = match.get("winner", "None")
     player_names = match.get("players", {})
 
     winner_name = player_names.get(winner_key, winner_key)
     scores = match.get("score") or match.get("scores") or {}
     rounds = match.get("rounds", [])
+    duration = sum(r.get("duration_s") or 0 for r in rounds)
 
     lines = [
         f"⚔️ *MATCH #{match_id} COMPLETED*",
         f"Mode: _{mode}_",
-        f"🏆 *Winner: {winner_name}*\n",
-        "*Final Scores:*"
     ]
-    for p_key, score in scores.items():
-        name = player_names.get(p_key, p_key)
-        lines.append(f"• *{name}*: {score} pts")
+    if duration:
+        lines.append(f"Duration: {format_duration(duration)}")
+    lines.append(f"🏆 *Winner: {winner_name}*\n")
+
+    # Scores are rounds won, shown as one line: "Alice 3 – 0 Bob"
+    if len(scores) == 2:
+        (a_key, a_score), (b_key, b_score) = sorted(scores.items())
+        lines.append(
+            f"*Rounds:* {player_names.get(a_key, a_key)} {a_score} – {b_score} {player_names.get(b_key, b_key)}"
+        )
+    elif scores:
+        lines.append("*Rounds:* " + " · ".join(
+            f"{player_names.get(k, k)} {v}" for k, v in sorted(scores.items())
+        ))
 
     if rounds:
         lines.append("\n*Round Breakdown:*")
         for r in rounds:
             r_num = r.get("round", "?")
-            r_winner_key = r.get("winner", "Draw")
-            r_winner_name = player_names.get(r_winner_key, r_winner_key)
-            lines.append(f"`R{r_num}`: Won by *{r_winner_name}*")
+            r_winner_key = r.get("winner")
+            if r_winner_key in player_names:
+                result = f"Won by *{player_names[r_winner_key]}*"
+            else:
+                result = "Draw"
+            if r.get("duration_s"):
+                result += f" ({r['duration_s']:.1f} s)"
+            lines.append(f"`R{r_num}`: {result}")
 
     return "\n".join(lines)
 
@@ -353,7 +391,7 @@ async def replay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-TOP_TITLES = {"wins": "Wins", "accuracy": "Accuracy", "hits": "Hits", "rounds": "Rounds won"}
+TOP_TITLES = {"wins": "Wins", "winrate": "Round win rate", "hits": "Hits per round", "rounds": "Rounds won"}
 
 
 def load_top(stat: str):
@@ -366,7 +404,7 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stat = context.args[0].lower() if context.args else "wins"
     if stat not in TOP_TITLES:
         await update.message.reply_text(
-            "Usage: `/top [wins|accuracy|hits|rounds]`", parse_mode=ParseMode.MARKDOWN
+            "Usage: `/top [wins|winrate|hits|rounds]`", parse_mode=ParseMode.MARKDOWN
         )
         return
 
@@ -385,10 +423,11 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     medals = ["🥇", "🥈", "🥉"]
     for idx, p in enumerate(players, start=1):
         rank_icon = medals[idx - 1] if idx <= 3 else f"`{idx}.`"
-        acc = format_accuracy(p["hits"], p["shots"])
+        rate = format_win_rate(p["rounds_won"], p["rounds_played"])
+        per_round = format_hits_per_round(p["hits"], p["rounds_played"])
         lines.append(
             f"{rank_icon} *{p['name']}* — {p['wins']}W in {p['matches']} | "
-            f"Hits {p['hits']}/{p['shots']} (`{acc}`) | Rounds {p['rounds_won']}"
+            f"Rounds: {p['rounds_won']}/{p['rounds_played']} (`{rate}`) | `{per_round}` hits/round"
         )
     if fastest:
         lines.append(
