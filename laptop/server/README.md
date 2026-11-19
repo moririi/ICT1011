@@ -14,7 +14,8 @@ The referee for the Arena mode: it holds the one true game state and decides hit
 | `fakewatch.py` | Software watches: `AutoWatch` (computer player) and `KeyboardWatch` (you). They move themselves and only learn about the world from WORLD/EVENT packets, like the real firmware |
 | `sim.py` | A whole 2-player match through the real packet path, in simulated time (fast), with optional packet loss |
 | `play.py` | Play a match yourself on the laptop with the keyboard (Windows) |
-| `watch_link.py` | The laptop plays Player B over Bluetooth against one real watch (duel packets). Step 1: B stands still |
+| `watch_link.py` | The laptop plays Player B over Bluetooth against one real watch (duel packets) and prints the match EVT lines |
+| `duel_bot.py` | Player B's brain for `watch_link.py`: the server bot (BFS, faces you, shoots with line of sight), easy / normal / hard |
 
 ## Try it (from the `laptop` folder)
 ```powershell
@@ -41,12 +42,32 @@ using the duel packet (docs/interfaces.md 3.1), not the Arena packets.
 2. Turn Bluetooth on in Windows. Close nRF Connect and do not pair the watch in Windows settings.
 3. From the `laptop` folder:
 ```powershell
-python -m server.watch_link --scan        # the watch should appear as TinyboyA  0A:80:E1:00:34:12
-python -m server.watch_link               # step 1: Player B stands still at (13.5, 13.5) facing west
-python -m server.watch_link --verbose     # same, printing every packet
+python -m server.watch_link --scan                  # the watch should appear as TinyboyA  0A:80:E1:00:34:12
+python -m server.watch_link --still                 # step 1: Player B stands still at (13.5, 13.5) facing west
+python -m server.watch_link                         # step 2: the server bot plays (normal)
+python -m server.watch_link --difficulty hard       # easy / normal / hard
+python -m server.watch_link --events match.log      # also append the EVT lines to a file
+python -m server.watch_link --verbose               # also print every packet
 ```
 **Step 1 works if** the watch leaves "Waiting for B" and, after you walk towards the bottom-right corner,
 you see the red Player B standing there. You can shoot it: after 2 hits the round ends on both sides.
+
+**Step 2 (`duel_bot.py`)**: Player B is the ARENA server's `BotBrain`: it walks the maze with BFS, turns to face you
+when it can see you and shoots when it has line of sight. Shooter decides hits: `Game.try_hit` decides whether each
+of its shots lands (range, wall, aim, accuracy roll). Each round both players go back to their spawns.
+
+| Difficulty | Accuracy at point blank | Reaction | Time between shots | Turn speed |
+|---|---|---|---|---|
+| easy | 45% | 1.0 s | 0.9 s | 2.0 rad/s |
+| normal | 75% | 0.6 s | 0.7 s | 3.0 rad/s |
+| hard | 90% | 0.3 s | 0.5 s | 4.0 rad/s |
+
+**Match events**: the same `EVT,...` lines Player B's firmware prints (docs/interfaces.md 3.1b), printed the moment
+they happen: `HELLO`, `MATCH_START`, `ROUND_START`, `SHOT` (the bot's own shots), `HIT` (both ways), `POS` (5 per second,
+A first), `ROUND_END`, `MATCH_END`, and `MATCH_ABORT` if the link drops or you press Ctrl+C mid-match. Every other line
+this program prints starts with something else, so `bridge.py` ignores it. A file written with `--events` works
+today with `python bridge.py --replay match.log --name-a Watch --name-b "Laptop bot"`.
+Use only ONE event source per match: the watch also prints its own EVT lines on USB.
 
 How it behaves (copied from Player B in `firmware/tinyboy/tinyboy.ino`):
 - B speaks first; sends again once the watch answered and 100 ms passed, or after 300 ms without an answer.
@@ -56,8 +77,14 @@ How it behaves (copied from Player B in `firmware/tinyboy/tinyboy.ino`):
 - Angle uses the firmware formula `(atan2(dirY, dirX) + pi) / (2 pi) * 255` (west = 255, east = 127).
 - When the watch leaves to the menu it restarts itself, so the link drops; the program then prints a summary and exits.
 
-Tests (`tests/test_watch_link.py`) run it against a Python copy of Player A's firmware logic, including
-30% packet loss, and against a fake Bluetooth client in real time. Not yet tried with a real watch.
+Tests (`tests/test_watch_link.py`, `tests/test_duel_bot.py`) run it against a Python copy of Player A's firmware logic
+(a still and a moving, shooting watch player), with packet loss, against a fake Bluetooth client in real time, and
+through `bridge.py`'s own parser and match tracker. Not yet tried with a real watch.
+
+**Known duel limitation (same for two watches):** each side ends a round from its own counters. If both players land
+their winning hit within about one packet exchange and a packet is lost, the two sides can record different winners
+and drift apart for the rest of the match. In simulation: 0 of 48 matches without loss, 3 of 48 with 20% loss.
+Fixing it needs a protocol change (e.g. confirming the round result), i.e. firmware work.
 
 ## Known limitations
 - Tested only with fake watches in simulated time: no real Bluetooth, no real latency. `play.py` key handling is unit-tested, but

@@ -13,12 +13,19 @@ this program connects to it and behaves exactly like a second watch would:
                    already on a later round). Match length = the watch's "rounds" setting.
   * angle:         same formula as the firmware: (atan2(dirY, dirX) + pi) / (2 pi) * 255  (west = 255)
 
-Step 1 (this file): B stands still at (13.5, 13.5) facing west. Step 2 will plug in the server bot.
+Player B is the server bot (duel_bot.py): BFS walking, turns to face the watch player, shoots when it
+has line of sight; this program decides whether each of its shots lands. --still = step 1 (stands still).
+
+Match events: the same EVT,... lines the watch prints (docs/interfaces.md section 3.1b), as Player B,
+go to the screen; every other line printed here starts with something else, so bridge.py ignores it.
 
     cd laptop
-    python -m server.watch_link --scan        # list nearby Bluetooth devices
-    python -m server.watch_link               # connect to TinyboyA and play as a still Player B
-    python -m server.watch_link --verbose     # also print every packet
+    python -m server.watch_link --scan                     # list nearby Bluetooth devices
+    python -m server.watch_link                            # play against the server bot (normal)
+    python -m server.watch_link --difficulty hard          # easy / normal / hard
+    python -m server.watch_link --still                    # step 1: Player B stands still
+    python -m server.watch_link --events match.log         # also save the EVT lines for bridge.py --replay
+    python -m server.watch_link --verbose                  # also print every packet
 
 BLE code based on laptop/ble_bridge_test.py (bleak + the TinyCircuits Nordic UART example).
 """
@@ -142,11 +149,61 @@ class StandStill:
         pass
 
 
+class MatchEvents:
+    """The EVT lines Player B's firmware prints (docs/interfaces.md section 3.1b), as Player B.
+    `emit` gets one line at a time, without the newline."""
+
+    def __init__(self, emit=None):
+        self.emit = emit or (lambda line: None)
+
+    def _out(self, *fields):
+        self.emit("EVT," + ",".join(str(f) for f in fields))
+
+    def hello(self):
+        self._out("HELLO", "B")
+
+    def match_start(self):
+        self._out("MATCH_START", "B")
+
+    def round_start(self, rnd):
+        self._out("ROUND_START", rnd)
+
+    def shot(self, hit):
+        self._out("SHOT", "B", 1 if hit else 0)
+
+    def hit(self, shooter, target, hp_left):
+        self._out("HIT", shooter, target, hp_left)
+
+    def pos(self, a_xy, b_xy):
+        """A first (left out until the watch's first packet), then B. Hundredths of a square."""
+        fields = ["POS"]
+        if a_xy is not None:
+            fields += ["A", int(a_xy[0] * 100), int(a_xy[1] * 100)]
+        fields += ["B", int(b_xy[0] * 100), int(b_xy[1] * 100)]
+        self._out(*fields)
+
+    def round_end(self, rnd, winner, hits_a, hits_b, shots_a, shots_b, ms):
+        self._out("ROUND_END", rnd, winner, hits_a, hits_b, shots_a, shots_b, ms)
+
+    def match_end(self, winner, rounds_a, rounds_b):
+        self._out("MATCH_END", winner, rounds_a, rounds_b)
+
+    def match_abort(self):
+        self._out("MATCH_ABORT")
+
+
 class DuelB:
     PLAYING, ROUND_OVER, MATCH_OVER = "playing", "round_over", "match_over"
+    POS_EVERY_S = 0.2                   # firmware POS_LOG_INTERVAL_MS: 5 positions per second
 
-    def __init__(self, brain=None):
+    def __init__(self, brain=None, events=None):
         self.brain = brain or StandStill()
+        self.events = events or MatchEvents()
+        self.match_active = False       # a match has started and not ended (MATCH_ABORT if the link drops)
+        self.round_started_at = 0.0
+        self.a_shots = 0                # the watch's shots this round (from its packets)
+        self.last_hits_taken = 0        # for HIT lines when the watch's count goes up
+        self.last_pos_log = -99.0
         self.state = None
         self.round = 0
         self.rounds_to_win = 3          # replaced by the watch's setting from its first packet
@@ -168,11 +225,19 @@ class DuelB:
         """Called when the Bluetooth link comes up (the watch starts round 1 at that moment too)."""
         self.round = 0
         self.rounds_b = self.rounds_a = 0
+        self.match_active = False
+        self.events.hello()
         self.start_round(now)
 
     def start_round(self, now):
         self.round += 1
-        self.hits_landed = self.hits_taken = self.shots = 0
+        if not self.match_active:
+            self.match_active = True
+            self.events.match_start()
+        self.events.round_start(self.round)
+        self.hits_landed = self.hits_taken = self.shots = self.a_shots = 0
+        self.last_hits_taken = 0
+        self.round_started_at = now
         self.x, self.y = B_SPAWN
         self.angle = B_FACING
         self.last_fire = -99.0
@@ -187,10 +252,22 @@ class DuelB:
         word = {1: "B wins", -1: "A wins", 0: "draw"}[result]
         self.log.append(f"round {self.round}: {word} (A {self.rounds_a} - {self.rounds_b} B)")
         over = self.rounds_a >= self.rounds_to_win or self.rounds_b >= self.rounds_to_win
+        self.events.round_end(self.round, {1: "B", -1: "A", 0: "D"}[result],
+                              self.hits_taken, self.hits_landed, self.a_shots, self.shots,
+                              int((now - self.round_started_at) * 1000))
         self.state = self.MATCH_OVER if over else self.ROUND_OVER
         self.state_since = now
         if over:
-            self.log.append("match over: " + ("B wins" if self.rounds_b > self.rounds_a else "A wins"))
+            winner = "B" if self.rounds_b >= self.rounds_to_win else "A"
+            self.events.match_end(winner, self.rounds_a, self.rounds_b)
+            self.match_active = False
+            self.log.append(f"match over: {winner} wins")
+
+    def abort(self):
+        """The link dropped (or we were stopped) in the middle of a match."""
+        if self.match_active:
+            self.events.match_abort()
+            self.match_active = False
 
     # ---- input from the watch ----
     def on_packet(self, pkt: DuelPacket, now):
@@ -200,14 +277,18 @@ class DuelB:
         self.a_paused = bool(pkt.flags & FLAG_PAUSED)
         if pkt.round == self.round:
             self.hits_taken = pkt.hits_landed               # only this round's count is damage
+            self.a_shots = pkt.shots
 
     # ---- actions a brain can take ----
     def fire(self, now, hit):
         """The brain fired. `hit` = it decided the shot hit the watch player (shooter decides)."""
         self.last_fire = now
         self.shots += 1
-        if hit and self.hits_landed < MAX_HITS:
+        landed = hit and self.hits_landed < MAX_HITS
+        self.events.shot(landed)
+        if landed:
             self.hits_landed += 1
+            self.events.hit("B", "A", MAX_HITS - self.hits_landed)
 
     # ---- every tick ----
     def update(self, now, dt):
@@ -223,9 +304,18 @@ class DuelB:
         if self.a_paused:                                      # the watch player paused: freeze
             return
         self.brain.update(self, dt, now)
+        if self.hits_taken > self.last_hits_taken:             # the watch player landed hits on B
+            for h in range(self.last_hits_taken + 1, self.hits_taken + 1):
+                self.events.hit("A", "B", MAX_HITS - h)
+            self.last_hits_taken = self.hits_taken
         won, lost = self.hits_landed >= MAX_HITS, self.hits_taken >= MAX_HITS
         if won or lost:
             self.end_round(0 if (won and lost) else (1 if won else -1), now)
+            return
+        if now - self.last_pos_log >= self.POS_EVERY_S:
+            self.last_pos_log = now
+            a_xy = (self.a.x, self.a.y) if self.a is not None else None
+            self.events.pos(a_xy, (self.x, self.y))
 
     # ---- output to the watch ----
     def packet(self, now) -> DuelPacket:
@@ -260,6 +350,15 @@ async def run_session(client, duel, turns=None, clock=time.monotonic, verbose=Fa
 
     await client.start_notify(UART_NOTIFY, on_notify)
     duel.start(clock())
+    try:
+        await _session_loop(client, duel, turns, clock, verbose, out, stop, report_every, inbox, wake, stats)
+    finally:
+        duel.abort()                     # link dropped / Ctrl+C mid-match -> EVT,MATCH_ABORT
+    stats.update(sent=turns.sent, replies=turns.replies, timeouts=turns.timeouts)
+    return stats
+
+
+async def _session_loop(client, duel, turns, clock, verbose, out, stop, report_every, inbox, wake, stats):
     last = last_report = clock()
     while client.is_connected and not (stop is not None and stop.is_set()):
         while inbox:
@@ -293,8 +392,6 @@ async def run_session(client, duel, turns=None, clock=time.monotonic, verbose=Fa
             await asyncio.wait_for(wake.wait(), timeout=max(0.005, min(0.02, turns.wait_time(clock()))))
         except asyncio.TimeoutError:
             pass
-    stats.update(sent=turns.sent, replies=turns.replies, timeouts=turns.timeouts)
-    return stats
 
 
 # ---------------------------------------------------------------------------
@@ -334,11 +431,17 @@ async def main_async(args, out=print):
             "and nothing else (nRF Connect, another watch) is connected to it. Try --scan.")
         return 1
     out(f"Found {device.name} ({device.address}), connecting ...")
-    stop = asyncio.Event()
-    async with BleakClient(device, disconnected_callback=lambda _c: stop.set()) as client:
-        out("Connected - the watch should now leave 'Waiting for B'. Ctrl+C to stop.")
-        duel = DuelB(StandStill())
-        stats = await run_session(client, duel, verbose=args.verbose, out=out, stop=stop)
+    brain = StandStill() if args.still else make_bot(args.difficulty, args.seed)
+    emit, close_events = make_emitter(args.events)
+    try:
+        stop = asyncio.Event()
+        async with BleakClient(device, disconnected_callback=lambda _c: stop.set()) as client:
+            who = "standing still" if args.still else f"the server bot ({args.difficulty})"
+            out(f"Connected - the watch should now leave 'Waiting for B'. Player B is {who}. Ctrl+C to stop.")
+            duel = DuelB(brain, MatchEvents(emit))
+            stats = await run_session(client, duel, verbose=args.verbose, out=out, stop=stop)
+    finally:
+        close_events()
     out("Disconnected.")
     out(f"Summary: sent {stats['sent']}, replies {stats['replies']}, sent without reply {stats['timeouts']}, "
         f"bad packets {stats['bad']}")
@@ -347,11 +450,40 @@ async def main_async(args, out=print):
     return 0
 
 
+def make_emitter(events_path=None, echo=print):
+    """EVT lines go to the screen straight away (for bridge.py) and, with --events, to a file too.
+    Returns (emit, close)."""
+    f = open(events_path, "a", encoding="utf-8") if events_path else None
+
+    def emit(line):
+        echo(line, flush=True)
+        if f:
+            f.write(line + "\n")
+            f.flush()
+
+    def close():
+        if f:
+            f.close()
+    return emit, close
+
+
+def make_bot(difficulty, seed=None):
+    from .duel_bot import DuelBot
+    import random
+    return DuelBot(difficulty, random.Random(seed))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Laptop = Player B in a duel against one TinyBoy watch")
     ap.add_argument("--address", default=WATCH_A_ADDRESS, help="Player A's Bluetooth address")
     ap.add_argument("--scan", action="store_true", help="only list nearby Bluetooth devices")
     ap.add_argument("--verbose", action="store_true", help="print every packet")
+    ap.add_argument("--still", action="store_true", help="step 1: Player B stands still and never shoots")
+    ap.add_argument("--difficulty", choices=("easy", "normal", "hard"), default="normal",
+                    help="how well the server bot aims and reacts (default normal)")
+    ap.add_argument("--seed", type=int, default=None, help="random seed for the bot (repeatable matches)")
+    ap.add_argument("--events", metavar="FILE",
+                    help="also append the EVT lines to FILE (works with: bridge.py --replay FILE)")
     args = ap.parse_args()
     try:
         from bleak.exc import BleakError
