@@ -2141,6 +2141,12 @@ render();
 
 setInterval(demoTick, 100);
 
+// Opened from the bridge (http://<laptop IP>:8000/) - e.g. on a phone - connect straight away.
+// Opened as a local file it stays in demo mode until Connect is pressed.
+if (location.protocol === "http:" || location.protocol === "https:") {
+  connectServer();
+}
+
 </script>
 
 </body>
