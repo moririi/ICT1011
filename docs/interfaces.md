@@ -44,7 +44,7 @@ Watch (C++) --BLE--> Laptop server (Python) --WebSocket--> Web app on phones / P
 | 5–6 | y | i16 | position × 256 |
 | 7 | angle | u8 | facing, 0–255 = full circle |
 | 8 | hitsLanded | u8 | hits I landed on you this round |
-| 9 | flags | u8 | bit0 = fired in the last 100 ms, bit1 = this player has the game paused |
+| 9 | flags | u8 | bit0 = fired in the last 100 ms, bit1 = this player has the game paused, bit2 = the referee paused it |
 | 10 | shots | u8 | shots I fired this round (since duel_v3) |
 | 11 | rounds | u8 | rounds to win; Player B uses the host's value (since `firmware/tinyboy`) |
 
@@ -68,8 +68,21 @@ Players are always `A` and `B`, whichever watch is plugged in. Positions are hun
 | `EVT,ROUND_END,1,A,2,1,7,5,34210` | round 1, winner A (`D` = draw), hitsA, hitsB, shotsA, shotsB, duration ms |
 | `EVT,MATCH_END,A,3,1` | match winner, rounds A, rounds B |
 | `EVT,MATCH_ABORT` | connection lost mid-match |
+| `EVT,PAUSE,R` | round paused by `A`, `B` or `R` (the referee); both watches are frozen |
+| `EVT,RESUME` | round carries on |
 
 The laptop bridge (`laptop/bridge.py`) turns these into `matches.json` (see section 4b).
+
+### 3.1c Referee commands (laptop → watch over USB) – `firmware/tinyboy`
+
+`bridge.py --live --host-token <password>` writes these lines to the plugged-in watch when the
+dashboard's referee button is pressed with the right host token. The other watch follows over Bluetooth
+(flags bit1 + bit2). The watch answers with `EVT,PAUSE,R` / `EVT,RESUME`.
+
+| Line | Meaning |
+|---|---|
+| `CMD,PAUSE` | pause the round on both watches (only during a round; players can quit but not resume) |
+| `CMD,RESUME` | end the referee's pause |
 
 ### 3.2 Arena packets (proposal – to confirm)
 

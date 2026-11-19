@@ -60,7 +60,10 @@ docs/                Interface definitions and attributions
 | `experiments/raycaster_v2` | **~29–43 FPS** | Adds opponent sprite (hidden behind walls) + crosshair hit check; dips when the sprite fills more of the screen |
 | `experiments/duel_v1` | **~35 FPS** | 2-player duel over BLE (watch ⇄ watch), 10 packets/s with turn-taking, auto-restart watchdog |
 
+## Laptop & Telegram bot
 
+Match results are sent from the watch to the laptop and posted to Telegram automatically.
+Setup and run instructions: [`laptop/README.md`](laptop/README.md
 
 ## Contributing
 
