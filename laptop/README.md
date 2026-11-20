@@ -78,9 +78,9 @@ and an AI model writes it instead (falls back to the statistics report if anythi
 
 **One watch vs the laptop bot** (watch on MULTIPLAYER → HOST (A), nothing plugged in by USB needed):
 ```powershell
-python -u -m server.watch_link | python bridge.py --stdin --name-a You --name-b "Laptop bot" --live
+python bridge.py --laptop-bot --name-a You --name-b "Laptop bot" --live
 ```
-watch_link's status lines still show in the window; its EVT lines go into matches.json, Telegram and the dashboard.
+The bridge starts the laptop bot itself (no pipe - on Windows PowerShell a pipe only delivers the events after the match) and restarts it after each match. Extra bot options: `--bot-args "--difficulty hard"`.
 Use only one event source per match (don't also run `bridge.py --port` for the same watch).
 
 ## Bot commands
