@@ -100,3 +100,15 @@ Fixing it needs a protocol change (e.g. confirming the round result), i.e. firmw
 - Watch-side Arena code: needs agreeing with Shinji (STATE/WORLD packet format)
 
 The map in `world.py` is a copy of `worldMap` in `firmware/tinyboy/tinyboy.ino`; keep them in sync.
+
+## Arena live on the web dashboard (`arena_live.py`)
+Runs the arena (server bots, Free-for-All, server-authoritative hits) in real time and streams it to the
+same web dashboard as the watch duel (`web/index.html`, laptop + phones). Every referee button works here:
+Pause / Resume, Restart, Game Mode (Free For All) and Match Duration. After each match: the final
+scoreboard for 12 s, then the next match starts; Generate Match Report gives the standings.
+```powershell
+python -m server.arena_live                                   # 4 bots, 2 min, first to 10 kills
+python -m server.arena_live --bots 6 --minutes 3 --kills 15 --host-token tb2611
+```
+Open http://localhost:8000/ (phones: http://<laptop IP>:8000/). Simulation only - no watch takes part;
+use port 8000 for one thing at a time (stop bridge.py first, or give one of them another port).
