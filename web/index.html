@@ -1313,7 +1313,7 @@ function renderMatch() {
     modeName(app.match.mode);
 
   $("playersDisplay").textContent =
-    app.players.length + (duel ? " / 2" : " / 4");
+    app.players.length + (duel ? " / 2" : " / " + Math.max(4, app.players.length));
 
   $("statusDisplay").textContent =
     app.match.status.toUpperCase();
@@ -1343,9 +1343,11 @@ function renderMatch() {
       : "⏸ Pause Match";
 
   const liveMode = app.mode === "live";
-  $("restartBtn").hidden = liveMode;
+  // Live watch duel: only Pause/Resume apply. Live arena (server/arena_live.py): Restart + settings work too.
+  const liveDuel = liveMode && app.match.mode === "duel";
+  $("restartBtn").hidden = liveDuel;
   $("finishBtn").hidden = liveMode;
-  $("demoSettings").hidden = liveMode;
+  $("demoSettings").hidden = liveDuel;
   $("demoHelp").hidden = liveMode;
   $("finishBtn").disabled = liveMode || app.match.status === "finished";
 
