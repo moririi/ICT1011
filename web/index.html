@@ -464,6 +464,13 @@ th {
         </button>
       </div>
 
+      <!-- Host token stays visible in live mode: the referee Pause/Resume needs it -->
+      <label style="display:block;margin:14px 0">
+        Host Token (referee password)
+        <input type="password" id="hostToken"
+          placeholder="The --host-token you started bridge.py with">
+      </label>
+
       <div id="demoSettings">
       <h3>Game Settings</h3>
 
@@ -487,12 +494,6 @@ th {
           </select>
         </label>
       </div>
-
-      <label>
-        Host Token (Live Server Only)
-        <input type="password" id="hostToken"
-          placeholder="Provided by Python server teammate">
-      </label>
 
       <button class="secondary" id="applySettingsBtn">
         Apply Settings
