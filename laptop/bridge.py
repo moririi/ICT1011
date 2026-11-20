@@ -16,7 +16,9 @@ Replay a saved log (no watch needed - for testing the bot):
     python bridge.py --replay sample/events.log --data my_test   (writes my_test/matches.json)
 
 Live, from the laptop bot (one watch on HOST (A) vs Naufal's server.watch_link as Player B):
-    python -u -m server.watch_link | python bridge.py --stdin --name-a You --name-b "Laptop bot" --live
+    python bridge.py --laptop-bot --name-a You --name-b "Laptop bot" --live
+    (starts server.watch_link itself and restarts it if it stops; on Windows PowerShell a pipe
+     "watch_link | bridge.py --stdin" only delivers the events after the match, so use this instead)
 
 Referee buttons on the dashboard (pause / resume both watches from a phone):
     python bridge.py --port COM5 --name-a Alice --name-b Bob --live --host-token 1234
@@ -329,13 +331,42 @@ def last_finished_match(tracker):
     return None
 
 
+def run_laptop_bot(args, tracker, raw_log, live):
+    """Run server.watch_link (the laptop as Player B over Bluetooth) as a child process and read its
+    output directly - no shell pipe, so events arrive live. If it stops (watch not found, match over,
+    watch restarted), start it again after a few seconds until Ctrl+C."""
+    import shlex
+    import subprocess
+    cmd = [sys.executable, "-u", "-m", "server.watch_link"] + shlex.split(args.bot_args)
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    while True:
+        print("Starting the laptop bot - put the watch on MULTIPLAYER -> HOST (A) ('Waiting for B').")
+        proc = subprocess.Popen(cmd, cwd=HERE, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding="utf-8", errors="replace", bufsize=1)
+        try:
+            run(proc.stdout, tracker, raw_log, live, echo_other=True)
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+            proc.wait()
+        if tracker.match is not None:     # stopped mid-match
+            tracker.finish("aborted")
+        print("Laptop bot stopped - trying again in 3 s (Ctrl+C to quit). "
+              "Put the watch back on MULTIPLAYER -> HOST (A).")
+        time.sleep(3)
+
+
 def main():
     ap = argparse.ArgumentParser(description="TinyBoy watch -> matches.json bridge")
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--port", help="watch serial port, e.g. COM5")
     src.add_argument("--replay", help="replay a saved log file instead of a live watch")
     src.add_argument("--stdin", action="store_true",
-                     help="read EVT lines piped in from another program, e.g. server.watch_link (laptop bot)")
+                     help="read EVT lines piped in from another program (on Windows prefer --laptop-bot)")
+    src.add_argument("--laptop-bot", action="store_true",
+                     help="one watch (HOST (A)) vs the laptop bot: starts server.watch_link and reads its events")
+    ap.add_argument("--bot-args", default="",
+                    help='extra options for the laptop bot, e.g. --bot-args "--difficulty hard"')
     ap.add_argument("--data", default=HERE, help="folder for matches.json and positions/")
     ap.add_argument("--out", default="matches.json", help="output file name")
     ap.add_argument("--name-a", help="display name for Player A")
@@ -376,7 +407,9 @@ def main():
     log_path = os.path.join(args.data, f"events_{datetime.now():%Y%m%d}.log")
     with open(log_path, "a", encoding="utf-8") as raw_log:
         try:
-            if args.stdin:
+            if args.laptop_bot:
+                run_laptop_bot(args, tracker, raw_log, live)
+            elif args.stdin:
                 try:
                     sys.stdin.reconfigure(errors="replace")
                 except AttributeError:
@@ -386,6 +419,10 @@ def main():
                 if tracker.match is not None:   # the other program ended mid-match
                     tracker.finish("aborted")
                 print("Input ended.")
+                if live is not None:
+                    print("Dashboard still running - Ctrl+C to stop.")
+                    while True:
+                        time.sleep(1)
             else:
                 run(link.lines(), tracker, raw_log, live)
         except KeyboardInterrupt:
