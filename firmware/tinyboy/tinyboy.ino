@@ -530,8 +530,8 @@ void drawTextScreen(const char *l1, uint8_t c1, const char *l2, const char *l3) 
 //    RIGHT stick (TURN_PORT, port 0): left/right = turn
 //  Both joysticks share one I2C address; the Wireling Adapter switches ports between reads.
 // =====================================================================
-#define MOVE_PORT 3        // Wireling Adapter port of the movement stick (left side)
-#define TURN_PORT 0        // Wireling Adapter port of the turning stick (right side)
+#define MOVE_PORT 0        // Wireling Adapter port of the movement stick (left side)
+#define TURN_PORT 3        // Wireling Adapter port of the turning stick (right side)
 #define JOY_SWAP_UD false  // true if pushing the move stick "up" walks you backwards
 #define JOY_SWAP_LR false  // true if the move stick strafes the wrong way
 #define TURN_SWAP   false  // true if the turn stick turns the wrong way
