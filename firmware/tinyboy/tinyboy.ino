@@ -8,11 +8,12 @@
  *   - turn-taking link (B sends, A answers, ~10/s), shooter decides hits
  *   - the host's "rounds to win" setting is used by both watches
  *   - match events over USB (EVT,... lines) for laptop/bridge.py  (docs/interfaces.md 3.1b)
+ *   - pause: hold the RIGHT stick up for 0.5 s, or the BACK button (top-left); both watches pause
  *   - BACK button (top-left): pause during a round (both watches pause), leave the
  *     waiting / between-rounds screen; YOU WIN / GAME OVER screen, then back to the menu
  * Singleplayer = the raycaster_v4 bot (patrols, spots you, turns, shoots back).
  *
- * Controls: twin-stick - LEFT stick (Wireling port 3) walk/strafe, RIGHT stick (port 0) turn.
+ * Controls: twin-stick - LEFT stick (Wireling port 0) walk/strafe, RIGHT stick (port 3) turn.
  *           Buttons don't move you. Top-left = BACK / pause. Menu: left stick = up/down,
  *           right stick = select (buttons: bottom-left = down, right buttons = select).
  * Safety:   watchdog restarts a frozen watch within ~2 s ("RECOVERED" on the menu).
@@ -198,6 +199,17 @@ bool oppPaused = false;       // the other watch's latest packet says it is paus
 bool oppRefPaused = false;    // ... and that it was the referee
 unsigned long pauseStart = 0;
 int pauseSel = 0;             // 0 = RESUME, 1 = QUIT TO MENU
+
+// Pause with the right (look) stick, for the arcade cabinet where the side buttons are hard to reach.
+// The look stick only uses left/right to turn, so holding it up OR down is free for "pause".
+const unsigned long STICK_PAUSE_HOLD_MS = 500;    // hold the look stick up/down this long = pause
+const unsigned long STICK_QUIT_HOLD_MS = 1500;    // "paused by the other player/referee": hold to quit
+bool turnStickVertical = false;   // look stick pushed up or down (set by readJoysticks)
+bool turnStickAny = false;        // look stick pushed in any direction (set by menuInput)
+unsigned long stickPauseSince = 0;
+bool stickPauseArmed = true;      // the stick must be let go before it can pause again
+unsigned long quitHoldSince = 0;
+bool quitArmed = false;           // hold-to-quit only counts after the stick was let go once
 const unsigned long MATCH_OVER_MIN_MS = 2000;   // result screen ignores input for this long
 const unsigned long MATCH_OVER_AUTO_MS = 15000; // then goes back to the menu by itself
 bool matchOverPromptShown = false;
@@ -526,8 +538,10 @@ void drawTextScreen(const char *l1, uint8_t c1, const char *l2, const char *l3) 
 
 // =====================================================================
 //  Joystick Wirelings (optional) - twin-stick, like a game controller
-//    LEFT  stick (MOVE_PORT, port 3): up/down = walk, left/right = strafe
-//    RIGHT stick (TURN_PORT, port 0): left/right = turn
+//    LEFT  stick (MOVE_PORT, port 0): up/down = walk, left/right = strafe
+//    RIGHT stick (TURN_PORT, port 3): left/right = turn
+//  (Ports swapped for the 3D-printed cabinet, where the watch is turned 180 degrees.
+//   Before the cabinet it was move = port 3, turn = port 0.)
 //  Both joysticks share one I2C address; the Wireling Adapter switches ports between reads.
 // =====================================================================
 #define MOVE_PORT 0        // Wireling Adapter port of the movement stick (left side)
@@ -571,6 +585,7 @@ void readJoysticks(bool &fwd, bool &back, bool &strafeL, bool &strafeR, bool &tu
   uint8_t prevStage = stage;
   stage = 9;
   StickState st;
+  turnStickVertical = false;
   if (moveStickOk && readStick(MOVE_PORT, st)) {
     fwd     |= JOY_SWAP_UD ? st.down : st.up;
     back    |= JOY_SWAP_UD ? st.up : st.down;
@@ -580,6 +595,7 @@ void readJoysticks(bool &fwd, bool &back, bool &strafeL, bool &strafeR, bool &tu
   if (turnStickOk && readStick(TURN_PORT, st)) {
     turnL |= TURN_SWAP ? st.right : st.left;
     turnR |= TURN_SWAP ? st.left : st.right;
+    turnStickVertical = st.up || st.down;
   }
   stage = prevStage;
 }
@@ -1053,8 +1069,10 @@ uint8_t menuInput() {
     if (JOY_SWAP_UD ? st.down : st.up) dir |= MENU_UP;
     if (JOY_SWAP_UD ? st.up : st.down) dir |= MENU_DOWN;
   }
+  turnStickAny = false;
   if (turnStickOk && readStick(TURN_PORT, st)) {
-    if (st.up || st.down || st.left || st.right) dir |= MENU_SELECT;
+    turnStickAny = st.up || st.down || st.left || st.right;
+    if (turnStickAny) dir |= MENU_SELECT;
   }
   uint8_t newDir = dir & ~prevStickDir;
   prevStickDir = dir;
@@ -1131,7 +1149,7 @@ void drawScreen() {
       printLeft("R stick: look",     21, TS_8b_White);
       printLeft("Gun fires itself",  30, TS_8b_White);
       printLeft("2 hits wins round", 39, TS_8b_White);
-      printLeft("Top-left btn: pause", 47, TS_8b_Gray);
+      printLeft("Hold R up: pause", 47, TS_8b_Gray);
       printCentered("Select: back", 56, TS_8b_Blue);
       break;
   }
@@ -1254,12 +1272,12 @@ void drawPauseScreen() {
   if (pauseBy == PAUSE_SELF) {
     drawItem("RESUME", 20, pauseSel == 0);
     drawItem("QUIT TO MENU", 34, pauseSel == 1);
-    printCentered("BACK btn: resume", 54, TS_8b_Blue);
+    printCentered("R stick: select", 54, TS_8b_Blue);
   } else {
     bool ref = (pauseBy == PAUSE_REF) || oppRefPaused;
     printCentered(ref ? "by the referee" : "by the other player", 16, TS_8b_White);
     drawItem("QUIT TO MENU", 34, true);
-    printCentered("Wait or quit", 54, TS_8b_Blue);
+    printCentered(quitHoldSince ? "Quitting..." : "Hold R stick: quit", 54, TS_8b_Blue);
   }
   bleIrqOn();
 }
@@ -1273,6 +1291,10 @@ void enterPause(uint8_t by, unsigned long now) {
   state = STATE_PAUSED;
   pauseBy = by;
   pauseSel = 0;
+  quitArmed = false;                   // a stick held from the game can't count towards quitting
+  quitHoldSince = 0;
+  stickPauseArmed = false;             // after the pause, let go of the stick before it can pause again
+  stickPauseSince = 0;
   prevButtons = display.getButtons();  // buttons / sticks already held don't count
   prevStickDir = 0xFF;
   playMenuSelectSound();
@@ -1291,6 +1313,8 @@ void resumeGame(unsigned long now) {
   muzzleFlashUntil = hitFlashUntil = damageFlashUntil = 0;
   state = STATE_PLAYING;
   prevGameButtons = display.getButtons();
+  stickPauseArmed = false;              // let go of the stick first, so resuming can't re-pause
+  stickPauseSince = 0;
   playMenuSelectSound();
   evtResume();
 }
@@ -1299,6 +1323,20 @@ void resumeGame(unsigned long now) {
 void endMyPause(unsigned long now) {
   if (!singleplayer && oppPaused) enterPause(PAUSE_OPP, now);
   else resumeGame(now);
+}
+
+// "Paused by the other player / referee": quitting needs the look stick (or a right button) HELD for
+// 1.5 s, after letting go once - so a player who was turning when the pause hit can't quit by accident.
+bool holdToQuit(unsigned long now) {
+  bool held = turnStickAny || (display.getButtons() & (TSButtonUpperRight | TSButtonLowerRight));
+  if (!held) {
+    quitArmed = true;
+    if (quitHoldSince) { quitHoldSince = 0; drawPauseScreen(); }
+    return false;
+  }
+  if (!quitArmed) return false;
+  if (!quitHoldSince) { quitHoldSince = now; drawPauseScreen(); return false; }
+  return now - quitHoldSince >= STICK_QUIT_HOLD_MS;
 }
 
 void updatePause(unsigned long now) {
@@ -1315,11 +1353,11 @@ void updatePause(unsigned long now) {
       endMyPause(now);
     }
   } else if (pauseBy == PAUSE_REF) {
-    if (in & MENU_SELECT) { quitToMenu(); return; }              // players can still leave
+    if (holdToQuit(now)) { quitToMenu(); return; }               // players can still leave
   } else {
     static bool lastRef = false;
     if (oppRefPaused != lastRef) { lastRef = oppRefPaused; drawPauseScreen(); }  // who-paused text
-    if (in & MENU_SELECT) { quitToMenu(); return; }
+    if (holdToQuit(now)) { quitToMenu(); return; }
     if (in & MENU_BACK) { enterPause(PAUSE_SELF, now); return; } // I want to pause as well
     if (!oppPaused) resumeGame(now);                            // they resumed
   }
@@ -1505,6 +1543,18 @@ void loop() {
   bool fwd = false, back = false, turnL = false, turnR = false;
   bool strafeL = false, strafeR = false;
   readJoysticks(fwd, back, strafeL, strafeR, turnL, turnR);
+
+  // Hold the look stick up (or down) for half a second = pause (no side button needed in the cabinet)
+  if (turnStickVertical) {
+    if (stickPauseArmed) {
+      if (!stickPauseSince) stickPauseSince = now;
+      else if (now - stickPauseSince >= STICK_PAUSE_HOLD_MS) { enterPause(PAUSE_SELF, now); return; }
+    }
+  } else {
+    stickPauseArmed = true;
+    stickPauseSince = 0;
+  }
+
   if (fwd)  tryMove(dirX * move, dirY * move);
   if (back) tryMove(-dirX * move, -dirY * move);
   // Strafe = move sideways, along the camera plane (perpendicular to where you face)
