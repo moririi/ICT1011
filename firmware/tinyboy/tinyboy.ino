@@ -178,6 +178,10 @@ bool matchOver = false;
 
 // The 4 watch buttons are no longer used to move (the joysticks do that).
 // One of them is the BACK button: pause in a game, back in the menus, leave the waiting screen.
+// Screen orientation: true = the original way round, false = turned 180 degrees (for the 3D-printed cabinet).
+// Change it here only; setup() applies it and the TinyScreen library turns the buttons with it.
+#define SCREEN_FLIP false
+
 #define BACK_BUTTON TSButtonUpperLeft   // change this if another button suits the case better
 uint8_t prevGameButtons = 0;
 bool backPressed() {                    // true only on the frame the BACK button goes down
@@ -1391,7 +1395,7 @@ void updateMatchOver(unsigned long now) {
 // =====================================================================
 void setup() {
   display.begin();
-  display.setFlip(true);
+  display.setFlip(SCREEN_FLIP);   // also remaps the 4 buttons, so "top-left" stays top-left as you see it
   display.setBrightness(10);
   SerialMonitorInterface.begin(9600);  // optional: no waiting, so it runs on battery
   randomSeed(micros());
