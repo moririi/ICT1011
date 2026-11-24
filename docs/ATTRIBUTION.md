@@ -17,7 +17,16 @@ Code adapted from any of these is also credited in a comment at the top of the s
 
 ## Libraries
 
-**Watch (Arduino):** TinyScreen, STBLE, Wireling and SX1505 libraries by TinyCircuits.
+**Watch (Arduino):** TinyScreen, STBLE, Wireling and SX1505 libraries by TinyCircuits, and the Arduino SAMD core.
+- TinyScreen: https://github.com/TinyCircuits/TinyCircuits-TinyScreen_Lib
+- Wireling: https://github.com/TinyCircuits/TinyCircuits-Wireling-Lib
+- STBLE, SX1505 and the other TinyCircuits libraries: https://github.com/TinyCircuits
 
-**Laptop (Python):** pyserial, bleak, python-telegram-bot, python-dotenv, matplotlib, NumPy, Pillow
+**Laptop (Python):** pyserial, bleak, aiohttp, python-telegram-bot, python-dotenv, matplotlib, NumPy, Pillow
 (listed in `laptop/requirements.txt`).
+
+**Web dashboard:** plain HTML, CSS and JavaScript, no external libraries.
+
+## Video
+
+Music and sound effects used in the demo video are credited in the YouTube description.
