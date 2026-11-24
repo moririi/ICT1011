@@ -6,18 +6,25 @@ TinyBoy turns the TinyCircuits TinyScreen+ into a pocket-sized retro game consol
 
 Two TinyBoys play **1v1 over Bluetooth Low Energy**, and the match spreads out from there: a **laptop** records every match and can join as a player itself, **phones** watch the match live and act as referee, and a **Telegram bot** posts the results.
 
+Each TinyBoy sits in a 3D-printed mini arcade cabinet designed by the team.
+
 The challenge is fitting a real-time 3D game plus wireless multiplayer into a microcontroller with a 48 MHz processor, about 32 KB of RAM and no floating-point hardware.
+
+## Demo video
+
+▶ **[Watch the demo on YouTube](YOUTUBE_LINK_HERE)** (2:33): Bluetooth duel, live dashboard on laptop and phone, referee pause, disconnect handling, arena simulation and the Telegram bot.
 
 ## Features
 
 **On the watch (`firmware/tinyboy`)**
 - **3D raycasting engine:** real-time first-person maze, rendered column by column into a RAM frame buffer (~30–40 FPS)
-- **Twin-stick controls:** left joystick moves/strafes, right joystick looks; the gun fires automatically
+- **Twin-stick controls:** left joystick moves/strafes, right joystick looks; the gun fires automatically. Menus are fully stick-driven (left stick up/down to choose, right stick to select, left stick left = back)
 - **Main menu:** Singleplayer, Multiplayer (Host / Join), Settings (rounds to win: 1 / 3 / 5), How to Play, with sound effects
 - **Singleplayer:** play against an on-watch bot that patrols the maze and shoots back
 - **1v1 multiplayer over BLE:** two watches exchange position, angle, hits, round and flags 10 times a second
-- **Pause:** the BACK button (top-left) pauses both watches; YOU WIN / GAME OVER screen at the end of a match
-- **Robust link:** turn-taking protocol, timeouts for lost packets, disconnect detection, watchdog that recovers a frozen watch
+- **Pause:** hold the right stick up for ½ s (or press the BACK button) to pause both watches; Resume / Quit to menu. If the other player or the referee paused, hold the right stick 1.5 s to quit
+- **Match end:** YOU WIN / GAME OVER screen, then back to the main menu
+- **Robust link:** turn-taking protocol, timeouts for lost packets, raised BLE transmit power and a 4 s link timeout to ride out short dropouts, disconnect detection (the watches re-pair and start a fresh match when back in range), watchdog that recovers a frozen watch
 
 **On the laptop (`laptop/`)**
 - **Bridge:** reads the match from the host watch over USB and saves every match to `matches.json`
@@ -56,10 +63,10 @@ Per console:
 | TinyScreen+ | Processor (SAMD21, 48 MHz) + 96×64 OLED + 4 side buttons |
 | ST BLE TinyShield (BlueNRG-MS) | Watch-to-watch multiplayer and the laptop link |
 | Wireling Adapter TinyShield | Connects the Wirelings below |
-| 2 × Joystick Wireling | Movement (port 3) and looking (port 0) |
+| 2 × Joystick Wireling | Movement (port 0, left) and looking (port 3, right) |
 | Buzzer Wireling | Sound effects (port 1) |
 | 150 mAh Li-Po battery (502020) | Portable power |
-| 3D-printed mini arcade cabinet | Case: screen window, two stick holes, BACK button plunger |
+| 3D-printed mini arcade cabinet | Case designed by the team in CAD: screen window, two stick holes, BACK button plunger, USB opening at the back |
 
 Laptop: any Windows/macOS/Linux laptop with Python 3.10+ and Bluetooth (for the laptop bot).
 
@@ -82,7 +89,9 @@ docs/                Interface definitions (packets, events, JSON) and attributi
 2. Install the TinyScreen, STBLE, Wireling and SX1505 libraries.
 3. Open `firmware/tinyboy/tinyboy.ino`, select the TinyScreen+ board and its port, and upload to **both** watches.
 
-**Controls:** left stick = move / strafe, right stick = look, gun fires automatically, top-left button = BACK / pause. In the menu: left stick up/down to choose, right stick to select.
+**Controls:** left stick = move / strafe, right stick = look, gun fires automatically. Hold the right stick up = pause (the top-left BACK button also works). In the menu: left stick up/down to choose, right stick to select, left stick left = back. On the waiting and round-over screens, hold the left stick left for 1 s to return to the menu.
+
+If your cabinet mounts the board the other way round, change `SCREEN_FLIP`, `MOVE_PORT` / `TURN_PORT` and `JOY_SWAP_*` at the top of `tinyboy.ino`.
 
 ### 2. Laptop
 ```powershell
@@ -123,20 +132,22 @@ For Telegram, create `laptop/.env` with `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` (an
 ## Known limitations
 
 - Two players per match on the watches; the Arena (more players) currently runs as a simulation with server bots.
+- BLE range is a few metres indoors; walls, bodies and a covered antenna shorten it. Out of range, the match is aborted (saved as a partial match) and the watches re-pair automatically.
+- Only finished matches are posted to Telegram; aborted matches are saved but not announced.
 - In watch-vs-laptop-bot mode the referee pause is not available (it travels over USB); players can still pause with the BACK button.
 - Facing direction on the dashboard is estimated from movement (the duel packet does not send it to the laptop).
 - If both players land their winning hit at almost the same moment and a packet is lost, the two watches can disagree on that round (rare).
 
 ## Team
 
-| Member | Main contributions |
-|---|---|
-| Morikage Shinji (2604696) | Team lead. Raycasting engine, BLE watch-to-watch multiplayer, firmware integration (menu + bot + duel + pause), laptop bridge, live dashboard server, referee, laptop-bot launcher |
-| Lee Chee Hsien (2603040) | Telegram bot (first version) |
-| Muhammad Naufal (2603036) | Arena server (rules, bots, pathfinding, packet protocol), laptop as Player B over BLE (`watch_link.py`, `duel_bot.py`) |
-| Jeremy Ang (2603019) | Live web dashboard (`web/index.html`): spectator view, scoreboard, kill feed, referee panel, duel/phone polish |
-| Tee Wei Wen (2605749) | Telegram bot features and match reports, SQLite database, replay GIFs, heatmaps |
-| Lee Yu Xuan (2603945) | Menu UI and sound effects (`sound.cpp`) |
+| Member | Software | Hardware / 3D print | Video |
+|---|---|---|---|
+| Morikage Shinji (2604696) | Team lead. Raycasting engine, BLE watch-to-watch multiplayer, firmware integration (menu + bot + duel + pause), laptop bridge, live dashboard server, referee, laptop-bot and arena dashboard integration | Measured the TinyScreen+ stack, CAD design of the cabinet, cabinet firmware changes (screen flip, stick mapping, stick pause) | Storyboard and script, dashboard recordings, Caster 2 voiceover |
+| Lee Chee Hsien (2603040) | Telegram bot (first version) | – | Segment edit |
+| Muhammad Naufal (2603036) | Arena server (rules, bots, pathfinding, packet protocol), laptop as Player B over BLE (`watch_link.py`, `duel_bot.py`) | Cabinet and watch assembly | Architecture animation |
+| Jeremy Ang (2603019) | Live web dashboard (`web/index.html`): spectator view, scoreboard, kill feed, referee panel, duel/phone polish | – | Intro and outro |
+| Tee Wei Wen (2605749) | Telegram bot features and match reports, SQLite database, replay GIFs, heatmaps | – | Segment edit |
+| Lee Yu Xuan (2603945) | Menu UI and sound effects (`sound.cpp`) | Cabinet and watch assembly | Final video edit |
 
 ## Contributing
 
