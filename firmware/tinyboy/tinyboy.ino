@@ -183,6 +183,11 @@ bool matchOver = false;
 // Change it here only; setup() applies it and the TinyScreen library turns the buttons with it.
 #define SCREEN_FLIP false
 
+// Bluetooth range: transmit power level 0-7 (7 = strongest) and how long the link may stay silent
+// before it counts as disconnected (x 10 ms; 400 = 4 s).
+#define BLE_TX_LEVEL 7
+#define BLE_SUPERVISION 400
+
 #define BACK_BUTTON TSButtonUpperLeft   // change this if another button suits the case better
 uint8_t prevGameButtons = 0;
 bool backPressed() {                    // true only on the frame the BACK button goes down
@@ -331,8 +336,10 @@ void startAdvertising() {  // Player A
 }
 
 void startConnection() {  // Player B
+  // Connection interval 10-20 ms, supervision timeout BLE_SUPERVISION x 10 ms: the link only counts
+  // as lost after that long without any packet, so short dips (a hand over the antenna) don't end the match.
   tBleStatus ret = aci_gap_create_connection(0x0010, 0x0010, PUBLIC_ADDR, addrA, PUBLIC_ADDR,
-                                             8, 16, 0, 200, 0, 0);
+                                             8, 16, 0, BLE_SUPERVISION, 0, 0);
   PRINTF("Connecting to Player A (status %d)\n", ret);
 }
 
@@ -358,7 +365,9 @@ void netBegin() {
       PRINTF("UART service FAILED\n");
     needAdvertise = true;
   }
-  aci_hal_set_tx_power_level(1, 3);
+  // Transmit power: high-power mode, level 7 = about +8 dBm (the maximum). Was level 3 (about -5 dBm),
+  // which dropped the link at a short distance. Costs a little more battery.
+  aci_hal_set_tx_power_level(1, BLE_TX_LEVEL);
 
   if (role == ROLE_B) startConnection();
 }
@@ -598,6 +607,28 @@ void readJoysticks(bool &fwd, bool &back, bool &strafeL, bool &strafeR, bool &tu
     turnStickVertical = st.up || st.down;
   }
   stage = prevStage;
+}
+
+// Waiting / between-rounds screens: HOLD the left stick left for 1 s = back to the menu.
+// It only counts after the stick was let go once on that screen, so a player still moving
+// when a round ends can't leave by accident.
+const unsigned long STICK_BACK_HOLD_MS = 1000;
+unsigned long stickBackSince = 0;
+bool stickBackArmed = false;
+int stickBackScreen = -1;
+
+bool moveStickLeftHeld() {
+  StickState st;
+  if (!moveStickOk || !readStick(MOVE_PORT, st)) return false;
+  return JOY_SWAP_LR ? st.right : st.left;
+}
+
+bool stickBackHold(unsigned long now) {
+  if ((int)state != stickBackScreen) { stickBackScreen = (int)state; stickBackArmed = false; stickBackSince = 0; }
+  if (!moveStickLeftHeld()) { stickBackArmed = true; stickBackSince = 0; return false; }
+  if (!stickBackArmed) return false;
+  if (!stickBackSince) stickBackSince = now;
+  return now - stickBackSince >= STICK_BACK_HOLD_MS;
 }
 
 // =====================================================================
@@ -1056,6 +1087,7 @@ const char *MP_ITEMS[]   = { "HOST (A)", "JOIN (B)", "BACK" };
 #define MENU_DOWN   0x02
 #define MENU_SELECT 0x04
 #define MENU_BACK   0x08
+#define MENU_STICKBACK 0x10   // left stick pushed left = back (menus only; pause menu ignores it)
 
 // Only inputs that were *just* pressed this frame (holding doesn't repeat)
 uint8_t menuInput() {
@@ -1068,6 +1100,7 @@ uint8_t menuInput() {
   if (moveStickOk && readStick(MOVE_PORT, st)) {
     if (JOY_SWAP_UD ? st.down : st.up) dir |= MENU_UP;
     if (JOY_SWAP_UD ? st.up : st.down) dir |= MENU_DOWN;
+    if (JOY_SWAP_LR ? st.right : st.left) dir |= MENU_STICKBACK;
   }
   turnStickAny = false;
   if (turnStickOk && readStick(TURN_PORT, st)) {
@@ -1131,7 +1164,7 @@ void drawScreen() {
     case SCR_MULTI:
       printCentered("MULTIPLAYER", 1, TS_8b_Yellow);
       for (int i = 0; i < 3; i++) drawItem(MP_ITEMS[i], 16 + i * 12, sel == i);
-      printCentered("Host = blue, Join = red", 54, TS_8b_Blue);
+      printCentered("L stick left: back", 54, TS_8b_Blue);
       break;
 
     case SCR_SETTINGS:
@@ -1150,7 +1183,7 @@ void drawScreen() {
       printLeft("Gun fires itself",  30, TS_8b_White);
       printLeft("2 hits wins round", 39, TS_8b_White);
       printLeft("Hold R up: pause", 47, TS_8b_Gray);
-      printCentered("Select: back", 56, TS_8b_Blue);
+      printCentered("L stick left: back", 56, TS_8b_Blue);
       break;
   }
   bleIrqOn();
@@ -1211,7 +1244,7 @@ void updateMenu(unsigned long now) {
   if (in & MENU_DOWN) sel = (sel + 1) % itemCount();   // wraps, so one button can reach everything
   if (sel != old) { drawScreen(); playMenuMoveSound(); }
 
-  if ((in & MENU_BACK) && screen != SCR_MAIN) {       // BACK: sub-menu -> main menu
+  if ((in & (MENU_BACK | MENU_STICKBACK)) && screen != SCR_MAIN) {   // BACK / left stick left: sub-menu -> main menu
     playMenuMoveSound();
     goTo(SCR_MAIN, screen == SCR_MULTI ? 1 : (screen == SCR_SETTINGS ? 2 : 3));
     return;
@@ -1476,11 +1509,11 @@ void loop() {
     // Waiting for the other player
     if (state == STATE_WAITING) {
       if (!waitingScreenDrawn) {
-        if (role == ROLE_A) drawTextScreen("HOST - Player A", TS_8b_Blue, "Waiting for B...", "BACK btn: menu");
-        else                drawTextScreen("JOIN - Player B", TS_8b_Red, "Connecting to A", "BACK btn: menu");
+        if (role == ROLE_A) drawTextScreen("HOST - Player A", TS_8b_Blue, "Waiting for B...", "Hold L left: menu");
+        else                drawTextScreen("JOIN - Player B", TS_8b_Red, "Connecting to A", "Hold L left: menu");
         waitingScreenDrawn = true;
       }
-      if (backPressed()) { quitToMenu(); return; }
+      if (backPressed() || stickBackHold(now)) { quitToMenu(); return; }
       if (netConnected) {
         gotReply = true;    // B speaks first
         replyDue = false;
@@ -1523,7 +1556,7 @@ void loop() {
 
   // ---------- Round over screen ----------
   if (state == STATE_ROUND_OVER) {
-    if (backPressed()) { quitToMenu(); return; }   // BACK between rounds = leave
+    if (backPressed() || stickBackHold(now)) { quitToMenu(); return; }   // BACK / hold L left between rounds = leave
     if (now - stateStart >= ROUND_OVER_MS) startRound(now);
     lastFpsTime = now;  // don't count the pause in the FPS
     frames = 0;
