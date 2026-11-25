@@ -67,7 +67,7 @@ uint8_t addrB[] = {0x12, 0x34, 0x00, 0xE1, 0x80, 0x0B};
 #define A_NOTIFY_HANDLE   (A_RX_CHAR_HANDLE + 1)  // A notifies here -> B receives
 #define A_CCCD_HANDLE     (A_RX_CHAR_HANDLE + 2)  // B turns notifications on here
 
-// One game packet = 10 bytes (BLE message limit is 20)
+// One game packet = 12 bytes (BLE message limit is 20)
 #define PACKET_MAGIC 0xB0
 struct __attribute__((packed)) DuelPacket {
   uint8_t magic;       // PACKET_MAGIC, to ignore anything else
