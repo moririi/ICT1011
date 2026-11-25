@@ -12,7 +12,7 @@ The challenge is fitting a real-time 3D game plus wireless multiplayer into a mi
 
 ## Demo video
 
-▶ **[Watch the demo on YouTube](https://youtu.be/vlQPMvbvyPE)** (3:00): Bluetooth duel, live dashboard on laptop and phone, referee pause, disconnect handling, arena simulation and the Telegram bot.
+▶ **[Watch the demo on YouTube](https://youtu.be/vlQPMvbvyPE)** (2:59): Bluetooth duel, live dashboard on laptop and phone, referee pause, disconnect handling, arena simulation and the Telegram bot.
 
 ## Features
 
