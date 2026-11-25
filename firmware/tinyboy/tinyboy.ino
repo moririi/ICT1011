@@ -76,7 +76,7 @@ struct __attribute__((packed)) DuelPacket {
   int16_t x, y;        // position x 256 (fixed point)
   uint8_t angle;       // facing, 0-255 = full circle
   uint8_t hitsLanded;  // how many times I've hit you this round
-  uint8_t flags;       // bit 0 = I just fired
+  uint8_t flags;       // bit 0 = fired, bit 1 = paused, bit 2 = referee
   uint8_t shots;       // shots I've fired this round (for accuracy stats)
   uint8_t rounds;      // rounds to win (Player B uses the host's setting)
 };
